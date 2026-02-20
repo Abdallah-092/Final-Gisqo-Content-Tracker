@@ -2,6 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, Notice } from '../types';
 import ConfirmModal from './ConfirmModal';
+import { database } from '../firebase';
+import { ref, set, push, update } from "firebase/database";
 
 interface SettingsProps {
   settings: AppSettings;
@@ -53,20 +55,37 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
     }
 
     if (editingNotice) {
-      setNotices(notices.map(n => n.id === editingNotice.id ? { ...n, message: noticeMsg } : n));
-      setEditingNotice(null);
+      // Update existing notice in Firebase
+      const noticeRef = ref(database, `notices/${editingNotice.id}`);
+      update(noticeRef, { message: noticeMsg })
+        .then(() => {
+          setEditingNotice(null);
+          setNoticeMsg('');
+        })
+        .catch(error => {
+          console.error("Error updating notice: ", error);
+          alert("Failed to update notice.");
+        });
     } else {
-      const newNotice: Notice = {
-        id: Math.random().toString(),
+      // Create new notice in Firebase
+      const noticesRef = ref(database, 'notices');
+      const newNoticeRef = push(noticesRef); // Firebase generates a unique key
+      const newNotice = {
         title: 'Important Update',
         message: noticeMsg,
         type: 'warning',
         active: true,
         createdAt: new Date().toISOString()
       };
-      setNotices([newNotice, ...notices]);
+      set(newNoticeRef, newNotice)
+        .then(() => {
+          setNoticeMsg('');
+        })
+        .catch(error => {
+          console.error("Error publishing notice: ", error);
+          alert("Failed to publish notice.");
+        });
     }
-    setNoticeMsg('');
   };
 
   const toggleNoticeStatus = (id: string) => {
