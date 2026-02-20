@@ -19,7 +19,8 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   user, entries, clients, settings, addContent, updateContent, deleteContent, notices, creators
 }) => {
   const [showLogModal, setShowLogModal] = useState(false);
-  const [showStats, setShowStats] = useState(false); 
+  const [showStats, setShowStats] = useState(false);
+  const [showHealth, setShowHealth] = useState(false);
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [filterCreatorId, setFilterCreatorId] = useState<string>('all');
   const [editingEntry, setEditingEntry] = useState<ContentEntry | null>(null);
@@ -256,28 +257,6 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
         </div>
       )}
 
-      {/* Client Health Health Board */}
-      <div className="bg-slate-800/20 p-8 rounded-[3.5rem] border border-slate-700/30 shadow-2xl animate-in slide-in-from-top-4 duration-1000">
-        <div className="flex justify-between items-center mb-10 px-4">
-          <h3 className="text-xl font-black text-white uppercase tracking-widest">Production Health Board</h3>
-          <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-800/80 px-4 py-2 rounded-xl">Target: {settings.monthlyClientGoal} Posts/Month</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {clientHealth.map(client => (
-            <div key={client.id} className="bg-slate-900/60 p-6 rounded-[2rem] border border-slate-800 group hover:border-orange-500/30 transition-all">
-              <div className="flex justify-between items-end mb-4">
-                <span className="text-xs font-black text-white uppercase tracking-tighter truncate pr-4">{client.name}</span>
-                <span className={`text-[10px] font-black ${client.count >= settings.monthlyClientGoal ? 'text-emerald-500' : 'text-orange-500'}`}>{client.count} / {settings.monthlyClientGoal}</span>
-              </div>
-              <div className="h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50">
-                <div className={`h-full transition-all duration-1000 ${client.count >= settings.monthlyClientGoal ? 'bg-emerald-500' : 'bg-orange-600'}`} style={{ width: `${client.percentage}%` }}></div>
-              </div>
-            </div>
-          ))}
-          {clients.length === 0 && <p className="col-span-full text-center py-8 text-slate-700 font-bold uppercase tracking-widest opacity-40">No clients registered for production yet.</p>}
-        </div>
-      </div>
-
       {/* Header Info Section */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 pb-4 px-2">
         <div>
@@ -289,6 +268,14 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
               <span>Daily Goal: <span className={`font-black ${userTodayCount >= settings.dailyGoal ? 'text-emerald-500' : 'text-orange-500'}`}>{userTodayCount}/{settings.dailyGoal} contents</span> today.</span>
             )}
             
+            <button 
+              onClick={() => setShowHealth(!showHealth)}
+              className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-orange-500 transition-colors bg-slate-800/40 px-3 py-1.5 rounded-full border border-slate-700/50"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+              <span>{showHealth ? 'Hide Production Health' : 'Show Production Health'}</span>
+            </button>
+
             <button 
               onClick={() => setShowStats(!showStats)}
               className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-orange-500 transition-colors bg-slate-800/40 px-3 py-1.5 rounded-full border border-slate-700/50"
@@ -325,6 +312,30 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Client Health Health Board */}
+      {showHealth && (
+        <div className="bg-slate-800/20 p-8 rounded-[3.5rem] border border-slate-700/30 shadow-2xl animate-in slide-in-from-top-4 duration-1000">
+          <div className="flex justify-between items-center mb-10 px-4">
+            <h3 className="text-xl font-black text-white uppercase tracking-widest">Production Health Board</h3>
+            <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-800/80 px-4 py-2 rounded-xl">Target: {settings.monthlyClientGoal} Posts/Month</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {clientHealth.map(client => (
+              <div key={client.id} className="bg-slate-900/60 p-6 rounded-[2rem] border border-slate-800 group hover:border-orange-500/30 transition-all">
+                <div className="flex justify-between items-end mb-4">
+                  <span className="text-xs font-black text-white uppercase tracking-tighter truncate pr-4">{client.name}</span>
+                  <span className={`text-[10px] font-black ${client.count >= settings.monthlyClientGoal ? 'text-emerald-500' : 'text-orange-500'}`}>{client.count} / {settings.monthlyClientGoal}</span>
+                </div>
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50">
+                  <div className={`h-full transition-all duration-1000 ${client.count >= settings.monthlyClientGoal ? 'bg-emerald-500' : 'bg-orange-600'}`} style={{ width: `${client.percentage}%` }}></div>
+                </div>
+              </div>
+            ))}
+            {clients.length === 0 && <p className="col-span-full text-center py-8 text-slate-700 font-bold uppercase tracking-widest opacity-40">No clients registered for production yet.</p>}
+          </div>
+        </div>
+      )}
 
       {/* Team Insights Panel */}
       {showStats && (
