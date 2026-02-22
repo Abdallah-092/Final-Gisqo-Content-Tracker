@@ -27,6 +27,11 @@ const Sidebar: React.FC<SidebarProps> = ({ user, view, setView, onLogout, settin
     if (role === 'CREATOR') return 'CONTENT CREATOR';
     return 'ADMINISTRATOR';
   };
+  
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    window.location.reload();
+  }
 
   return (
     <nav className="bg-[#111827]/95 backdrop-blur-2xl border-b border-slate-800 sticky top-0 z-[500] px-4 md:px-8 animate-in slide-in-from-top-4 fade-in duration-700">
@@ -35,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, view, setView, onLogout, settin
           
           {/* Left: Brand (Static) */}
           <div className="flex-1 flex items-center justify-start min-w-0">
-            <div className="flex items-center space-x-3 cursor-default">
+            <a href="/" onClick={handleLogoClick} className="flex items-center space-x-3 cursor-pointer">
               {settings.logo ? (
                 <img src={settings.logo} alt="Logo" className="h-9 md:h-11 w-auto object-contain" />
               ) : (
@@ -44,7 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, view, setView, onLogout, settin
               <span className="text-xl md:text-2xl font-black tracking-tighter text-white hidden lg:block truncate">
                 {settings.appName || 'GisqoTracker'}
               </span>
-            </div>
+            </a>
           </div>
 
           {/* Center: Large Centered Nav Menu */}

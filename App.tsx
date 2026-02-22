@@ -105,6 +105,26 @@ const App: React.FC = () => {
     }
   }, [settings.primaryColor]);
 
+  // Update favicon
+  useEffect(() => {
+    if (settings.favicon) {
+      let favicon = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!favicon) {
+        favicon = document.createElement('link');
+        favicon.rel = 'icon';
+        document.getElementsByTagName('head')[0].appendChild(favicon);
+      }
+      favicon.href = settings.favicon;
+    }
+  }, [settings.favicon]);
+  
+  // Update document title
+  useEffect(() => {
+    if (settings.appName) {
+      document.title = settings.appName;
+    }
+  }, [settings.appName]);
+
   const handleLogin = (userData: User) => {
     setUser(userData);
     localStorage.setItem('gisqo_user', JSON.stringify(userData));

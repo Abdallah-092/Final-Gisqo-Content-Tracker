@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, Notice } from '../types';
 import ConfirmModal from './ConfirmModal';
 import { database } from '../firebase';
-import { ref, set, push, update } from "firebase/database";
+import { ref, set, push, update, remove } from "firebase/database";
 
 interface SettingsProps {
   settings: AppSettings;
@@ -90,11 +90,13 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
 
   const toggleNoticeStatus = (id: string) => {
     const notice = notices.find(n => n.id === id);
-    if (!notice?.active && hasActiveNotice) {
+    if (!notice) return;
+    if (!notice.active && hasActiveNotice) {
       alert("Another notice is already active.");
       return;
     }
-    setNotices(notices.map(n => n.id === id ? { ...n, active: !n.active } : n));
+    const noticeRef = ref(database, `notices/${id}`);
+    update(noticeRef, { active: !notice.active });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'favicon') => {
@@ -259,7 +261,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
                <div className="flex justify-between items-start">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-200 line-clamp-2 pr-4 leading-relaxed">{notice.message}</p>
-                    <p className="text-[9px] text-slate-500 font-black mt-2 uppercase tracking-widest">{new Date(notice.createdAt).toLocaleDateString()}</p>
+                    <p className="text-[9px] text-slate-500 font-black mt-2 uppercase tracking-widest">{notice.createdAt ? new Date(notice.createdAt).toLocaleDateString() : 'Date not available'}</p>
                   </div>
                   <button 
                     onClick={() => toggleNoticeStatus(notice.id)}
@@ -280,7 +282,13 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
       <ConfirmModal 
         isOpen={!!deleteNoticeId}
         onClose={() => setDeleteNoticeId(null)}
-        onConfirm={() => { if (deleteNoticeId) { setNotices(notices.filter(n => n.id !== deleteNoticeId)); setDeleteNoticeId(null); } }}
+        onConfirm={() => { 
+          if (deleteNoticeId) { 
+            const noticeRef = ref(database, `notices/${deleteNoticeId}`);
+            remove(noticeRef);
+            setDeleteNoticeId(null); 
+          } 
+        }}
         title="Burn Notice?"
         message="This will permanently remove the announcement from the global system."
         variant="danger"
