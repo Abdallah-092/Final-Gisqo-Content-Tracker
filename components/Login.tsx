@@ -1,43 +1,58 @@
 
 import React, { useState } from 'react';
 import { User, AppSettings } from '../types';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface LoginProps {
   onLogin: (u: User) => void;
-  availableUsers: User[];
   settings: AppSettings;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin, availableUsers, settings }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, settings }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleFormLogin = (e: React.FormEvent) => {
+  const handleFormLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
 
-    // Simulate network delay for premium feel
-    setTimeout(() => {
-      const foundUser = availableUsers.find(
-        u => u.email.toLowerCase() === email.toLowerCase() && 
-        u.password === password
-      );
+    try {
+      const q = query(collection(db, "creators"), where("email", "==", email.toLowerCase()));
+      const querySnapshot = await getDocs(q);
 
-      if (foundUser) {
-        if (!foundUser.active) {
-          setError('This account has been deactivated. Contact admin.');
-        } else {
-          onLogin(foundUser);
-        }
-      } else {
+      if (querySnapshot.empty) {
         setError('Invalid email or password. Please try again.');
+        setIsSubmitting(false);
+        return;
       }
+
+      const userDoc = querySnapshot.docs[0];
+      const foundUser = userDoc.data() as User;
+
+      if (foundUser.password !== password) {
+        setError('Invalid email or password. Please try again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!foundUser.active) {
+        setError('This account has been deactivated. Contact admin.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      onLogin(foundUser);
+
+    } catch (err) {
+      console.error(err);
+      setError('An unexpected error occurred. Please try again.');
       setIsSubmitting(false);
-    }, 800);
+    }
   };
 
   return (

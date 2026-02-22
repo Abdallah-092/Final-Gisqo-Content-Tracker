@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { database } from './firebase';
-import { ref, onValue, set, push, remove } from "firebase/database";
+import { db } from './firebase';
+import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc, updateDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 import { User, ContentEntry, AppSettings, Notice, Client } from './types';
 import Sidebar from './components/Sidebar';
 import AdminHub from './components/AdminHub';
@@ -35,7 +35,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // State initialization without localStorage
+  // State initialization
   const [settings, setSettings] = useState<AppSettings>(INITIAL_SETTINGS);
   const [creators, setCreators] = useState<User[]>([DEFAULT_ADMIN]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -45,56 +45,57 @@ const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'admin'>('dashboard');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // --- Firebase Data Fetching ---
+  // --- Firestore Data Fetching ---
   useEffect(() => {
-    // onValue will listen for changes in real-time
-    const settingsRef = ref(database, 'settings');
-    onValue(settingsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
+    const settingsDocRef = doc(db, 'settings', 'main');
+    const unsubscribeSettings = onSnapshot(settingsDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as AppSettings;
         const merged = { ...INITIAL_SETTINGS, ...data };
         if (!merged.appName || merged.appName.trim() === '') {
           merged.appName = INITIAL_SETTINGS.appName;
         }
         setSettings(merged);
       } else {
-        // If no settings in DB, set the initial ones
-        set(ref(database, 'settings'), INITIAL_SETTINGS);
+        setDoc(settingsDocRef, { ...INITIAL_SETTINGS });
       }
     });
 
-    const creatorsRef = ref(database, 'creators');
-    onValue(creatorsRef, (snapshot) => {
-        const data = snapshot.val();
-        // Firebase returns an object, we convert it to an array
-        const creatorsList = data ? Object.values(data) : [];
-        // Ensure the default admin is always present if the db is empty
-        if (creatorsList.length === 0) {
-            const defaultAdminRef = ref(database, `creators/${DEFAULT_ADMIN.id}`);
-            set(defaultAdminRef, DEFAULT_ADMIN);
-            setCreators([DEFAULT_ADMIN]);
-        } else {
-            setCreators(creatorsList as User[]);
-        }
+    const creatorsCollectionRef = collection(db, 'creators');
+    const unsubscribeCreators = onSnapshot(creatorsCollectionRef, (snapshot) => {
+      const creatorsList = snapshot.docs.map(doc => doc.data() as User);
+      if (creatorsList.length === 0) {
+        const defaultAdminDocRef = doc(db, 'creators', DEFAULT_ADMIN.id);
+        setDoc(defaultAdminDocRef, { ...DEFAULT_ADMIN });
+        setCreators([DEFAULT_ADMIN]);
+      } else {
+        setCreators(creatorsList);
+      }
+    });
+    
+    const clientsCollectionRef = collection(db, 'clients');
+    const unsubscribeClients = onSnapshot(clientsCollectionRef, (snapshot) => {
+        setClients(snapshot.docs.map(doc => doc.data() as Client));
     });
 
-    const clientsRef = ref(database, 'clients');
-    onValue(clientsRef, (snapshot) => {
-      const data = snapshot.val();
-      setClients(data ? Object.values(data) as Client[] : []);
+    const entriesCollectionRef = collection(db, 'contentEntries');
+    const unsubscribeEntries = onSnapshot(entriesCollectionRef, (snapshot) => {
+        setContentEntries(snapshot.docs.map(doc => doc.data() as ContentEntry));
     });
 
-    const entriesRef = ref(database, 'contentEntries');
-    onValue(entriesRef, (snapshot) => {
-      const data = snapshot.val();
-      setContentEntries(data ? Object.values(data) as ContentEntry[] : []);
+    const noticesCollectionRef = collection(db, 'notices');
+    const unsubscribeNotices = onSnapshot(noticesCollectionRef, (snapshot) => {
+        setNotices(snapshot.docs.map(doc => doc.data() as Notice));
     });
 
-    const noticesRef = ref(database, 'notices');
-    onValue(noticesRef, (snapshot) => {
-      const data = snapshot.val();
-      setNotices(data ? Object.values(data) as Notice[] : []);
-    });
+
+    return () => {
+        unsubscribeSettings();
+        unsubscribeCreators();
+        unsubscribeClients();
+        unsubscribeEntries();
+        unsubscribeNotices();
+    };
   }, []);
 
 
@@ -125,7 +126,7 @@ const App: React.FC = () => {
     }
   }, [settings.appName]);
 
-  const handleLogin = (userData: User) => {
+  const handleLoginSuccess = (userData: User) => {
     setUser(userData);
     localStorage.setItem('gisqo_user', JSON.stringify(userData));
     setView('dashboard');
@@ -137,61 +138,67 @@ const App: React.FC = () => {
     setShowLogoutConfirm(false);
   };
 
-  // --- Firebase Data Writing Functions ---
+  // --- Firestore Data Writing Functions ---
 
-  const addContent = (entry: Omit<ContentEntry, 'id'>) => {
-    const newEntryRef = push(ref(database, 'contentEntries'));
-    const newEntry: ContentEntry = { ...entry, id: newEntryRef.key! } as ContentEntry;
-    set(newEntryRef, newEntry);
+  const addContent = async (entry: Omit<ContentEntry, 'id'>) => {
+    const newDocRef = await addDoc(collection(db, "contentEntries"), { ...entry });
+    await updateDoc(newDocRef, { id: newDocRef.id });
   };
 
-  const updateContent = (updatedEntry: ContentEntry) => {
-    set(ref(database, `contentEntries/${updatedEntry.id}`), updatedEntry);
+  const updateContent = async (updatedEntry: ContentEntry) => {
+    const docRef = doc(db, "contentEntries", updatedEntry.id);
+    await updateDoc(docRef, { ...updatedEntry });
   };
 
-  const deleteContent = (id: string) => {
-    remove(ref(database, `contentEntries/${id}`));
+  const deleteContent = async (id: string) => {
+    const docRef = doc(db, "contentEntries", id);
+    await deleteDoc(docRef);
   };
   
-  const updateCreator = (updatedUser: User) => {
-      set(ref(database, `creators/${updatedUser.id}`), updatedUser);
+  const updateCreator = async (updatedUser: User) => {
+      const docRef = doc(db, "creators", updatedUser.id);
+      await updateDoc(docRef, { ...updatedUser });
       if (user?.id === updatedUser.id) {
         setUser(updatedUser);
         localStorage.setItem('gisqo_user', JSON.stringify(updatedUser));
       }
   };
   
-  const handleSetCreators = (newCreators: User[]) => {
-      const creatorsObject = newCreators.reduce((acc, creator) => {
-          acc[creator.id] = creator;
-          return acc;
-      }, {} as {[key: string]: User});
-      set(ref(database, 'creators'), creatorsObject);
+  const handleSetCreators = async (newCreators: User[]) => {
+      const batch = writeBatch(db);
+      newCreators.forEach(creator => {
+          const docRef = doc(db, "creators", creator.id);
+          batch.set(docRef, { ...creator });
+      });
+      await batch.commit();
   }
 
-  const handleSetClients = (newClients: Client[]) => {
-      const clientsObject = newClients.reduce((acc, client) => {
-          acc[client.id] = client;
-          return acc;
-      }, {} as {[key: string]: Client});
-      set(ref(database, 'clients'), clientsObject);
+  const handleSetClients = async (newClients: Client[]) => {
+      const batch = writeBatch(db);
+      newClients.forEach(client => {
+          const docRef = doc(db, "clients", client.id);
+          batch.set(docRef, { ...client });
+      });
+      await batch.commit();
   }
 
-  const handleSetSettings = (newSettings: AppSettings) => {
-      set(ref(database, 'settings'), newSettings);
+  const handleSetSettings = async (newSettings: AppSettings) => {
+      const docRef = doc(db, "settings", "main");
+      await setDoc(docRef, { ...newSettings });
   }
 
-  const handleSetNotices = (newNotices: Notice[]) => {
-       const noticesObject = newNotices.reduce((acc, notice) => {
-          acc[notice.id] = notice;
-          return acc;
-      }, {} as {[key: string]: Notice});
-      set(ref(database, 'notices'), noticesObject);
+  const handleSetNotices = async (newNotices: Notice[]) => {
+      const batch = writeBatch(db);
+      newNotices.forEach(notice => {
+          const docRef = doc(db, "notices", notice.id);
+          batch.set(docRef, { ...notice });
+      });
+      await batch.commit();
   }
 
 
   if (!user) {
-    return <Login onLogin={handleLogin} availableUsers={creators} settings={settings} />;
+    return <Login onLogin={handleLoginSuccess} settings={settings} />;
   }
 
   return (
