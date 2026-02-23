@@ -400,7 +400,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
                     <div key={client.id} className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 flex justify-between items-center group hover:bg-slate-800 transition-all">
                         <div>
                           <h4 className="font-black text-xl text-white uppercase tracking-tighter group-hover:text-orange-500 transition-colors">{client.name}</h4>
-                          <span className={`text-[10px] font-black uppercase tracking-[0.2em] mt-1 block ${client.active ? 'text-emerald-500' : 'text-slate-600'}`}>{client.active ? 'Active Portfolio' : 'Archived'}</span>
+                          <span className={`text-[10px] font-black uppercase tracking-[0.2em] mt-1 block ${client.active ? 'text-emerald-500' : 'text-slate-600'}`}>{client.active ? 'Active Client' : 'Archived'}</span>
                         </div>
                         <div className="flex space-x-2">
                           <button onClick={() => toggleClientStatus(client.id)} className="p-3 bg-slate-800 rounded-xl hover:text-white transition-colors" title="Toggle Active Status">

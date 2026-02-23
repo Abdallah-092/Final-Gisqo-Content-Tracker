@@ -2,8 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, Notice } from '../types';
 import ConfirmModal from './ConfirmModal';
-import { database } from '../firebase';
-import { ref, set, push, update, remove } from "firebase/database";
+import { db } from '../firebase';
+import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -15,11 +15,12 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, setNotices }) => {
   const [noticeMsg, setNoticeMsg] = useState('');
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
-  const [deleteNoticeId, setDeleteNoticeId] = useState<string | null>(null);
+  const [showActiveNoticeErrorModal, setShowActiveNoticeErrorModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const noticesPerPage = 3;
   const logoInputRef = useRef<HTMLInputElement>(null);
   const faviconInputRef = useRef<HTMLInputElement>(null);
 
-  // Draft state to prevent instant global updates
   const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
   const [isSaved, setIsSaved] = useState(true);
 
@@ -33,10 +34,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
 
   const handleSaveSettings = () => {
     if (!isAppNameValid) return;
-    setSettings({
-      ...draftSettings,
-      appName: draftSettings.appName.trim()
-    });
+    setSettings({ ...draftSettings, appName: draftSettings.appName.trim() });
     setIsSaved(true);
   };
 
@@ -45,58 +43,76 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
     setIsSaved(false);
   };
 
-  const hasActiveNotice = notices.some(n => n.active);
+  const safeNotices = Array.isArray(notices) ? notices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : [];
+  const hasActiveNotice = safeNotices.some(n => n.active);
 
-  const handlePublishNotice = () => {
+  const indexOfLastNotice = currentPage * noticesPerPage;
+  const indexOfFirstNotice = indexOfLastNotice - noticesPerPage;
+  const currentNotices = safeNotices.slice(indexOfFirstNotice, indexOfLastNotice);
+
+  const handlePublishNotice = async () => {
     if (!noticeMsg) return;
     if (hasActiveNotice && !editingNotice) {
-      alert("Please deactivate or delete the existing active notice before publishing a new one.");
+      setShowActiveNoticeErrorModal(true);
       return;
     }
 
     if (editingNotice) {
-      // Update existing notice in Firebase
-      const noticeRef = ref(database, `notices/${editingNotice.id}`);
-      update(noticeRef, { message: noticeMsg })
-        .then(() => {
-          setEditingNotice(null);
-          setNoticeMsg('');
-        })
-        .catch(error => {
-          console.error("Error updating notice: ", error);
-          alert("Failed to update notice.");
-        });
+      const noticeRef = doc(db, 'notices', editingNotice.id);
+      try {
+        await updateDoc(noticeRef, { message: noticeMsg });
+        setEditingNotice(null);
+        setNoticeMsg('');
+      } catch (error) {
+        console.error("Error updating notice: ", error);
+        alert("Failed to update notice.");
+      }
     } else {
-      // Create new notice in Firebase
-      const noticesRef = ref(database, 'notices');
-      const newNoticeRef = push(noticesRef); // Firebase generates a unique key
-      const newNotice = {
-        title: 'Important Update',
-        message: noticeMsg,
-        type: 'warning',
-        active: true,
-        createdAt: new Date().toISOString()
-      };
-      set(newNoticeRef, newNotice)
-        .then(() => {
-          setNoticeMsg('');
-        })
-        .catch(error => {
-          console.error("Error publishing notice: ", error);
-          alert("Failed to publish notice.");
-        });
+      try {
+        const newNoticeData = {
+          title: 'Important Update',
+          message: noticeMsg,
+          type: 'warning',
+          active: true,
+          createdAt: new Date().toISOString()
+        };
+        const docRef = await addDoc(collection(db, 'notices'), newNoticeData);
+        await updateDoc(docRef, { id: docRef.id });
+        setNoticeMsg('');
+      } catch (error) {
+        console.error("Error publishing notice: ", error);
+        alert("Failed to publish notice.");
+      }
     }
   };
 
-  const toggleNoticeStatus = (id: string) => {
-    const notice = notices.find(n => n.id === id);
+  const toggleNoticeStatus = async (id: string) => {
+    const notice = safeNotices.find(n => n.id === id);
     if (!notice) return;
     if (!notice.active && hasActiveNotice) {
-      alert("Another notice is already active.");
+      setShowActiveNoticeErrorModal(true);
       return;
     }
-    const noticeRef = ref(database, `notices/${id}`);
-    update(noticeRef, { active: !notice.active });
+    const noticeRef = doc(db, 'notices', id);
+    try {
+      await updateDoc(noticeRef, { active: !notice.active });
+    } catch (error) {
+      console.error("Error toggling notice status: ", error);
+      alert("Failed to update notice status.");
+    }
+  };
+
+  const handleDeleteNotice = async (id: string) => {
+    try {
+        const noticeRef = doc(db, 'notices', id);
+        await deleteDoc(noticeRef);
+        const updatedNotices = safeNotices.filter(notice => notice.id !== id);
+        setNotices(updatedNotices);
+
+    } catch (error) {
+        console.error("Error deleting notice: ", error);
+        alert("Failed to delete notice. Check the console for more details.");
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'favicon') => {
@@ -256,43 +272,72 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings, notices, set
 
         <div className="space-y-4">
           <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-6">Past Broadcasts</h4>
-          {notices.map(notice => (
-            <div key={notice.id} className="bg-[#1a2333]/60 p-6 rounded-[2.5rem] border border-slate-700/50 space-y-4 group hover:border-orange-500/30 transition-all shadow-lg">
-               <div className="flex justify-between items-start">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-200 line-clamp-2 pr-4 leading-relaxed">{notice.message}</p>
-                    <p className="text-[9px] text-slate-500 font-black mt-2 uppercase tracking-widest">{notice.createdAt ? new Date(notice.createdAt).toLocaleDateString() : 'Date not available'}</p>
-                  </div>
-                  <button 
-                    onClick={() => toggleNoticeStatus(notice.id)}
-                    className={`px-3 py-1 rounded-lg text-[8px] font-black transition-all ${notice.active ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-700 text-slate-400'}`}
-                  >
-                    {notice.active ? 'LIVE' : 'OFF'}
-                  </button>
-               </div>
-               <div className="flex space-x-4 pt-4 border-t border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => { setEditingNotice(notice); setNoticeMsg(notice.message); }} className="text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-widest">Edit</button>
-                  <button onClick={() => setDeleteNoticeId(notice.id)} className="text-[10px] font-black text-red-500/50 hover:text-red-500 uppercase tracking-widest">Delete</button>
-               </div>
+          {currentNotices.map(notice => (
+            <div key={notice.id} className="bg-[#1a2333]/60 group p-4 rounded-2xl border border-slate-700/50 flex items-center justify-between hover:border-orange-500/30 transition-all shadow-lg">
+                <div className="flex items-center space-x-4 flex-1 min-w-0">
+                    <button 
+                        onClick={() => toggleNoticeStatus(notice.id)}
+                        className={`px-3 py-1 rounded-lg text-[8px] font-black transition-all flex-shrink-0 ${notice.active ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-700 text-slate-400'}`}
+                    >
+                        {notice.active ? 'LIVE' : 'OFF'}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-200 truncate">{notice.message}</p>
+                        <p className="text-[9px] text-slate-500 font-black mt-1 uppercase tracking-widest">{notice.createdAt ? new Date(notice.createdAt).toLocaleDateString() : 'Date not available'}</p>
+                    </div>
+                </div>
+                <div className="flex items-center space-x-2 transition-opacity opacity-0 group-hover:opacity-100">
+                    <button 
+                        onClick={() => { setEditingNotice(notice); setNoticeMsg(notice.message); }}
+                        disabled={!notice.active}
+                        className={`${notice.active ? 'text-slate-400 hover:text-white' : 'text-slate-600 cursor-not-allowed'}`}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
+                            <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
+                        </svg>
+                    </button>
+                    <button 
+                        onClick={() => handleDeleteNotice(notice.id)}
+                        className="text-red-500/60 hover:text-red-500"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                           <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
             </div>
           ))}
+          {safeNotices.length > noticesPerPage && (
+            <div className="flex justify-center items-center space-x-4 mt-4">
+                <button 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 text-xs font-black text-orange-500/50 hover:text-orange-500 disabled:text-slate-600 disabled:cursor-not-allowed uppercase tracking-widest"
+                >
+                    Previous
+                </button>
+                <span className="text-xs font-bold text-slate-500">Page {currentPage}</span>
+                <button 
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(safeNotices.length / noticesPerPage)))}
+                    disabled={currentPage === Math.ceil(safeNotices.length / noticesPerPage)}
+                    className="px-4 py-2 text-xs font-black text-orange-500/50 hover:text-orange-500 disabled:text-slate-600 disabled:cursor-not-allowed uppercase tracking-widest"
+                >
+                    Next
+                </button>
+            </div>
+          )}
         </div>
       </div>
 
       <ConfirmModal 
-        isOpen={!!deleteNoticeId}
-        onClose={() => setDeleteNoticeId(null)}
-        onConfirm={() => { 
-          if (deleteNoticeId) { 
-            const noticeRef = ref(database, `notices/${deleteNoticeId}`);
-            remove(noticeRef);
-            setDeleteNoticeId(null); 
-          } 
-        }}
-        title="Burn Notice?"
-        message="This will permanently remove the announcement from the global system."
-        variant="danger"
-        confirmText="Confirm Delete"
+        isOpen={showActiveNoticeErrorModal}
+        onClose={() => setShowActiveNoticeErrorModal(false)}
+        onConfirm={() => setShowActiveNoticeErrorModal(false)}
+        title="Broadcast Already Active"
+        message="There is already a live broadcast. Please deactivate the current one before activating another."
+        variant="warning"
+        confirmText="Got It"
       />
     </div>
   );
