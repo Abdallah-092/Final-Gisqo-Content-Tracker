@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { User } from '../types';
+import { Trash2 } from 'lucide-react';
 
 interface PeopleProps {
   creators: User[];
@@ -44,7 +45,9 @@ const PeopleManagement: React.FC<PeopleProps> = ({ creators, onOpenAdd, onOpenEd
             
             <div className="flex justify-between items-center">
               <button onClick={() => onOpenEdit(user)} className="text-[11px] font-black text-white hover:text-orange-500 uppercase tracking-widest transition-colors">Edit Account</button>
-              <button onClick={() => onDelete(user.id)} className="text-[11px] font-black text-red-500/50 hover:text-red-500 uppercase tracking-widest transition-colors">Delete</button>
+              <button onClick={() => onDelete(user.id)} className="text-red-500/50 hover:text-red-500 p-2 rounded-full transition-colors">
+                <Trash2 size={20} />
+              </button>
             </div>
           </div>
         ))}

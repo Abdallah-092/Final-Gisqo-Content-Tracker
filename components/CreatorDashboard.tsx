@@ -529,13 +529,13 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                                       className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-left ${isExpanded ? 'bg-slate-800/80 border-slate-600 shadow-md' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60'}`}
                                     >
                                       <div className="flex items-center space-x-2.5 overflow-hidden">
-                                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isMe ? (hasGoalMet ? 'bg-emerald-500 shadow-emerald-500/50' : 'bg-orange-500 shadow-orange-500/50') : (hasGoalMet ? 'bg-emerald-500' : 'bg-slate-500')} shadow-lg`}></div>
-                                        <span className={`text-[10px] font-black uppercase tracking-widest truncate ${isMe ? (hasGoalMet ? 'text-emerald-500' : 'text-orange-500') : (hasGoalMet ? 'text-emerald-500' : 'text-slate-300')}`}>
+                                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${hasGoalMet ? 'bg-emerald-500 shadow-emerald-500/50' : 'bg-red-500 shadow-red-500/50'} shadow-lg`}></div>
+                                        <span className={`text-[10px] font-black uppercase tracking-widest truncate ${hasGoalMet ? 'text-emerald-500' : 'text-red-500'}`}>
                                           {isMe ? 'Me' : creator.name}
                                         </span>
                                       </div>
                                       <div className="flex items-center space-x-2 flex-shrink-0 ml-1">
-                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full transition-colors ${hasGoalMet ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-950/20' : (isMe ? 'bg-orange-500/20 text-orange-500' : 'bg-slate-700/40 text-slate-500')}`}>
+                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full transition-colors ${hasGoalMet ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-950/20' : 'bg-red-500/20 text-red-500'}`}>
                                           {creatorTodayCount}{isMe ? `/${settings.dailyGoal}` : ''}
                                         </span>
                                         <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">

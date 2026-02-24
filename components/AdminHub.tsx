@@ -1,9 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, ContentEntry, AppSettings, Notice, Client, UserRole } from '../types';
 import PeopleManagement from './PeopleManagement';
 import Settings from './Settings';
 import ConfirmModal from './ConfirmModal';
+import { db } from '../firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
 
 interface AdminHubProps {
   entries: ContentEntry[];
@@ -30,7 +32,6 @@ const AdminHub: React.FC<AdminHubProps> = ({
   // People Management Modals
   const [showPersonForm, setShowPersonForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [personFormData, setPersonFormData] = useState({ 
     name: '', 
     email: '', 
@@ -39,12 +40,28 @@ const AdminHub: React.FC<AdminHubProps> = ({
     active: true 
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusModalConfig, setStatusModalConfig] = useState({
+      title: '',
+      message: '',
+      variant: 'primary' as 'primary' | 'danger' | 'warning',
+  });
   
   // Content Bank States
   const [bankCreatorFilter, setBankCreatorFilter] = useState<string>('all');
   const [bankSearchQuery, setBankSearchQuery] = useState('');
   const [bankPage, setBankPage] = useState(1);
   const itemsPerPage = 8;
+
+  useEffect(() => {
+    if (showStatusModal) {
+      const timer = setTimeout(() => {
+        setShowStatusModal(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [showStatusModal]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -57,7 +74,6 @@ const AdminHub: React.FC<AdminHubProps> = ({
         weekAgo.setDate(now.getDate() - 7);
         return entryDate >= weekAgo;
       }
-      // Monthly default
       return entryDate.getMonth() === now.getMonth() && entryDate.getFullYear() === now.getFullYear();
     });
 
@@ -90,7 +106,6 @@ const AdminHub: React.FC<AdminHubProps> = ({
     return { total, byType, performance };
   }, [entries, creators, settings.dailyGoal, reportPeriod]);
 
-  // Content Bank Logic
   const filteredBankEntries = useMemo(() => {
     let result = [...entries].reverse();
     if (bankCreatorFilter !== 'all') {
@@ -155,17 +170,45 @@ const AdminHub: React.FC<AdminHubProps> = ({
     setShowPersonForm(false);
   };
 
-  const handleDeleteUser = () => {
-    if (deletingUserId) {
-      setCreators(creators.filter(u => u.id !== deletingUserId));
-      setDeletingUserId(null);
+  const requestDeleteUser = (userId: string) => {
+    const user = creators.find(c => c.id === userId);
+    if (user) {
+        setUserToDelete(user);
+    }
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+        const userDocRef = doc(db, 'creators', userToDelete.id);
+        await deleteDoc(userDocRef);
+        const updatedCreators = creators.filter(user => user.id !== userToDelete.id);
+        setCreators(updatedCreators);
+
+        setStatusModalConfig({
+            title: 'Success!',
+            message: 'User has been successfully deleted.',
+            variant: 'primary',
+        });
+        setShowStatusModal(true);
+
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        setStatusModalConfig({
+            title: 'Error',
+            message: 'Failed to delete user. Please try again.',
+            variant: 'danger',
+        });
+        setShowStatusModal(true);
+    } finally {
+        setUserToDelete(null);
     }
   };
 
   return (
     <>
       <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-        {/* Header Section */}
         <div className="flex flex-col items-center space-y-10">
           <div className="text-center">
             <h1 className="text-5xl font-black text-white tracking-tight uppercase mb-2">Admin Hub</h1>
@@ -174,7 +217,6 @@ const AdminHub: React.FC<AdminHubProps> = ({
             </p>
           </div>
           
-          {/* Centered Navbar (Tab Switcher) */}
           <div className="flex justify-center w-full">
             <div className="flex bg-[#1f293b]/80 p-2 rounded-[2.5rem] border border-slate-700/50 backdrop-blur-xl shadow-2xl shadow-black/40">
               {(['reports', 'people', 'clients', 'settings'] as const).map(tab => (
@@ -355,7 +397,6 @@ const AdminHub: React.FC<AdminHubProps> = ({
                 )}
               </div>
 
-              {/* Pagination Controls */}
               {totalPages > 1 && (
                 <div className="px-10 py-8 border-t border-slate-700/30 flex justify-between items-center bg-slate-900/10">
                   <button 
@@ -423,7 +464,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
             creators={creators} 
             onOpenAdd={handleOpenAddPerson}
             onOpenEdit={handleOpenEditPerson}
-            onDelete={setDeletingUserId}
+            onDelete={requestDeleteUser}
           />
         )}
 
@@ -445,6 +486,26 @@ const AdminHub: React.FC<AdminHubProps> = ({
         message="This will permanently remove the client and all associated data. This action cannot be undone."
         variant="danger"
         confirmText="Yes, Remove Client"
+      />
+
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={handleConfirmDeleteUser}
+        title="Delete User?"
+        message={`Are you sure you want to delete ${userToDelete?.name}? This cannot be undone.`}
+        variant="danger"
+        confirmText="Yes, Delete User"
+      />
+
+       <ConfirmModal
+        isOpen={showStatusModal}
+        onClose={() => setShowStatusModal(false)}
+        onConfirm={() => setShowStatusModal(false)}
+        title={statusModalConfig.title}
+        message={statusModalConfig.message}
+        variant={statusModalConfig.variant}
+        confirmText="OK"
       />
 
       {showPersonForm && (
