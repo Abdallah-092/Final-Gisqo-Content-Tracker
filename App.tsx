@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc, updateDoc, writeBatch } from "firebase/firestore";
-import { User, ContentEntry, AppSettings, Notice, Client, Holiday } from './types';
+import { User, ContentEntry, AppSettings, Notice, Client, Holiday, Shooting } from './types';
 import Sidebar from './components/Sidebar';
 import AdminHub from './components/AdminHub';
 import CreatorDashboard from './components/CreatorDashboard';
@@ -42,6 +42,7 @@ const App: React.FC = () => {
   const [contentEntries, setContentEntries] = useState<ContentEntry[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [shootings, setShootings] = useState<Shooting[]>([]);
 
   const [view, setView] = useState<'dashboard' | 'admin'>('dashboard');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -94,6 +95,11 @@ const App: React.FC = () => {
         setHolidays(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Holiday)));
     });
 
+    const shootingsCollectionRef = collection(db, 'shootings');
+    const unsubscribeShootings = onSnapshot(shootingsCollectionRef, (snapshot) => {
+        setShootings(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Shooting)));
+    });
+
 
     return () => {
         unsubscribeSettings();
@@ -102,6 +108,7 @@ const App: React.FC = () => {
         unsubscribeEntries();
         unsubscribeNotices();
         unsubscribeHolidays();
+        unsubscribeShootings();
     };
   }, []);
 
@@ -198,6 +205,21 @@ const App: React.FC = () => {
     await batch.commit();
   }
 
+  const addShooting = async (shooting: Omit<Shooting, 'id'>) => {
+    const newDocRef = await addDoc(collection(db, "shootings"), { ...shooting });
+    await updateDoc(newDocRef, { id: newDocRef.id });
+  };
+
+  const updateShooting = async (updatedShooting: Shooting) => {
+    const docRef = doc(db, "shootings", updatedShooting.id);
+    await updateDoc(docRef, { ...updatedShooting });
+  };
+
+  const deleteShooting = async (id: string) => {
+    const docRef = doc(db, "shootings", id);
+    await deleteDoc(docRef);
+  };
+
   const handleSetSettings = async (newSettings: AppSettings) => {
       const docRef = doc(db, "settings", "main");
       await setDoc(docRef, { ...newSettings });
@@ -240,6 +262,10 @@ const App: React.FC = () => {
             setNotices={handleSetNotices}
             holidays={holidays}
             setHolidays={handleSetHolidays}
+            shootings={shootings}
+            addShooting={addShooting}
+            updateShooting={updateShooting}
+            deleteShooting={deleteShooting}
             setCreators={handleSetCreators}
             updateCreator={updateCreator}
             addContent={addContent}
@@ -255,6 +281,7 @@ const App: React.FC = () => {
             deleteContent={deleteContent}
             notices={notices}
             holidays={holidays}
+            shootings={shootings}
             creators={creators}
           />
         )}

@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, view, setView, onLogout, settin
   return (
     <nav className="bg-[#111827]/95 backdrop-blur-2xl border-b border-slate-800 sticky top-0 z-[500] px-4 md:px-8 animate-in slide-in-from-top-4 fade-in duration-700">
       <div className="max-w-screen-2xl mx-auto">
-        <div className="flex justify-between h-20 items-center gap-2">
+        <div className="flex justify-between h-20 items-center gap-8 flex-nowrap">
           
           {/* Left: Brand (Static) */}
           <div className="flex-1 flex items-center justify-start min-w-0">
@@ -53,7 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, view, setView, onLogout, settin
           </div>
 
           {/* Center: Large Centered Nav Menu */}
-          <div className="flex items-center justify-center bg-slate-900/60 p-1.5 rounded-[1.8rem] border border-slate-700/50 shadow-inner">
+          <div className="flex-shrink-0 flex items-center justify-center bg-slate-900/60 p-1.5 rounded-[1.8rem] border border-slate-700/50 shadow-inner">
             <button 
               onClick={() => setView('dashboard')}
               className={`px-6 md:px-12 py-3 rounded-[1.4rem] text-base md:text-xl font-black tracking-tight transition-all hover:scale-[1.02] active:scale-95 ${view === 'dashboard' ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/50' : 'text-slate-400 hover:text-white'}`}

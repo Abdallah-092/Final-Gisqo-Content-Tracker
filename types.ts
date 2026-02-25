@@ -55,3 +55,13 @@ export interface Holiday {
   name: string;
   date: string; // ISO string YYYY-MM-DD
 }
+
+export interface Shooting {
+  id: string;
+  title: string;
+  clientId: string;
+  date: string; // ISO string YYYY-MM-DD
+  location: string;
+  time?: string;
+  creatorIds: string[];
+}

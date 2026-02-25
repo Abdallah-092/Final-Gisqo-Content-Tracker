@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, ContentEntry, AppSettings, Notice, ContentType, Client, Holiday } from '../types';
+import { User, ContentEntry, AppSettings, Notice, ContentType, Client, Holiday, Shooting } from '../types';
 import ConfirmModal from './ConfirmModal';
 
 interface CreatorDashboardProps {
@@ -13,13 +13,16 @@ interface CreatorDashboardProps {
   deleteContent: (id: string) => void;
   notices: Notice[];
   holidays: Holiday[];
+  shootings: Shooting[];
   creators: User[];
 }
 
 const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ 
-  user, entries, clients, settings, addContent, updateContent, deleteContent, notices, holidays, creators
+  user, entries, clients, settings, addContent, updateContent, deleteContent, notices, holidays, shootings, creators
 }) => {
   const [showLogModal, setShowLogModal] = useState(false);
+  const [showShootingModal, setShowShootingModal] = useState(false);
+  const [selectedShooting, setSelectedShooting] = useState<Shooting | null>(null);
   const [showStats, setShowStats] = useState(false);
   const [showHealth, setShowHealth] = useState(false);
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
@@ -229,6 +232,11 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       clientId: ''
     });
   };
+  
+    const openShootingModal = (shooting: Shooting) => {
+      setSelectedShooting(shooting);
+      setShowShootingModal(true);
+    };
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -238,6 +246,10 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
     const dayEntries = filteredEntries.filter(e => e.date === dateStr);
     if (filterCreatorId === 'all') return dayEntries;
     return dayEntries.filter(e => e.creatorId === filterCreatorId);
+  };
+  
+  const getShootingsForDay = (dateStr: string) => {
+    return shootings.filter(s => s.date === dateStr && (filterCreatorId === 'all' || (s.creatorIds || []).includes(filterCreatorId)));
   };
 
   const getIcon = (type: ContentType) => {
@@ -286,7 +298,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
         )}
 
         {/* Header Info Section */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 pb-4 px-2">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:flex-nowrap justify-between gap-8 pb-4 px-2">
           <div>
             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-tight hover:scale-[1.01] transition-transform cursor-default uppercase">Content Tracker</h1>
             <div className="mt-2 text-slate-400 font-bold text-base md:text-lg flex flex-wrap items-center gap-4">
@@ -314,7 +326,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
             </div>
           </div>
           
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 flex-shrink-0">
             <div className="flex items-center bg-[#1f293b] rounded-2xl border border-slate-700 px-4 py-3 text-white font-bold text-sm shadow-sm transition-all hover:border-slate-500">
                <span className="mr-3 opacity-50">📅</span>
                <select 
@@ -485,6 +497,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                 {week.days.map((dateObj) => {
                   const dateStr = dateObj.toISOString().split('T')[0];
                   const dayEntries = getEntriesForDay(dateStr);
+                  const dayShootings = getShootingsForDay(dateStr);
                   const userDayEntries = dayEntries.filter(e => e.creatorId === user.id);
                   const isMet = !isAdmin && userDayEntries.length >= settings.dailyGoal;
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
@@ -526,8 +539,21 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                         </div>
                       </div>
                       <div className="w-full h-px bg-slate-700/30"></div>
-                      <div className="p-4 md:p-5 flex-1 flex flex-col">
-                        <div className="space-y-4 flex-1">
+                      <div className="p-2 flex-1 flex flex-col">
+                        <div className="space-y-2 flex-1 p-2">
+                           {dayShootings.map(shooting => (
+                            <div key={shooting.id} onClick={() => openShootingModal(shooting)} className="cursor-pointer bg-orange-600/10 p-2 rounded-xl border border-orange-500/30 transition-all hover:bg-orange-600/20 hover:border-orange-500/50">
+                               <div className="flex items-center space-x-2">
+                                <div className="bg-orange-600/20 p-1.5 rounded-md">
+                                    <svg className="w-3 h-3 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Shooting</p>
+                                    <p className="text-white font-bold text-xs leading-tight truncate">{shooting.title}</p>
+                                </div>
+                               </div>
+                            </div>
+                          ))}
                           {holiday ? (
                              <div className="flex flex-col items-center justify-center py-20 text-purple-400 opacity-50 h-full group-hover/card:opacity-80 transition-opacity">
                                 <div className="bg-purple-900/50 p-4 rounded-[1.25rem] mb-4 shadow-inner group-hover/card:scale-110 transition-transform">
@@ -535,7 +561,14 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                                 </div>
                                 <p className="text-xs font-black uppercase tracking-widest text-center">{holiday.name}</p>
                              </div>
-                          ) : dayEntries.length > 0 ? (
+                          ) : (dayEntries.length === 0 && dayShootings.length === 0) ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-700 opacity-20 h-full group-hover/card:opacity-40 transition-opacity">
+                               <div className="bg-slate-800 p-4 rounded-[1.25rem] mb-4 shadow-inner group-hover/card:scale-110 transition-transform">
+                                 <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z" clipRule="evenodd" /><path d="M6 12a2 2 0 012-2h8a2 2 0 012 2v2a2 2 0 01-2 2H8a2 2 0 01-2-2v-2z" /></svg>
+                               </div>
+                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-center">No Submissions</p>
+                            </div>
+                          ) : (
                             <>
                               {creatorGroups.map((creator) => {
                                 const creatorEntries = dayEntries.filter(e => e.creatorId === creator.id);
@@ -561,9 +594,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                                         <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full transition-colors ${hasGoalMet ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-950/20' : 'bg-red-500/20 text-red-500'}`}>
                                           {creatorTodayCount}{isMe ? `/${settings.dailyGoal}` : ''}
                                         </span>
-                                        <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                                        </svg>
+                                        <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
                                       </div>
                                     </button>
 
@@ -621,13 +652,6 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                                 );
                               })}
                             </>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center py-20 text-slate-700 opacity-20 h-full group-hover/card:opacity-40 transition-opacity">
-                               <div className="bg-slate-800 p-4 rounded-[1.25rem] mb-4 shadow-inner group-hover/card:scale-110 transition-transform">
-                                 <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z" clipRule="evenodd" /><path d="M6 12a2 2 0 012-2h8a2 2 0 012 2v2a2 2 0 01-2 2H8a2 2 0 01-2-2v-2z" /></svg>
-                               </div>
-                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-center">No Submissions</p>
-                            </div>
                           )}
                         </div>
                       </div>
@@ -789,6 +813,43 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                 {editingEntry ? 'Update Content Log' : 'Publish Log'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Shooting Details Modal */}
+      {showShootingModal && selectedShooting && (
+        <div 
+          onClick={() => setShowShootingModal(false)}
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-6 bg-slate-950/10 backdrop-blur-md animate-in fade-in duration-300 pointer-events-auto"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-800/50 backdrop-blur-xl w-full max-w-lg rounded-[3rem] p-10 border-2 border-orange-500/50 shadow-2xl shadow-orange-900/40 animate-in zoom-in-95 duration-300 relative"
+          >
+             <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black text-white uppercase tracking-wider">Shooting Details</h3>
+               <button onClick={() => setShowShootingModal(false)} className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-xl transition-all">
+                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+               </button>
+            </div>
+
+            <div className="space-y-4 text-lg">
+              <p><strong className="font-bold text-orange-500 tracking-wider uppercase text-sm">Title:</strong> <span className="text-white font-semibold">{selectedShooting.title}</span></p>
+              <p><strong className="font-bold text-orange-500 tracking-wider uppercase text-sm">Client:</strong> <span className="text-white font-semibold">{clients.find(c => c.id === selectedShooting.clientId)?.name}</span></p>
+              <p><strong className="font-bold text-orange-500 tracking-wider uppercase text-sm">Date:</strong> <span className="text-white font-semibold">{new Date(selectedShooting.date).toLocaleDateString(undefined, { timeZone: 'UTC' })}</span></p>
+              <p><strong className="font-bold text-orange-500 tracking-wider uppercase text-sm">Location:</strong> <span className="text-white font-semibold">{selectedShooting.location}</span></p>
+              {selectedShooting.time && <p><strong className="font-bold text-orange-500 tracking-wider uppercase text-sm">Time:</strong> <span className="text-white font-semibold">{selectedShooting.time}</span></p>}
+            </div>
+
+            <div className="mt-8">
+              <h4 className="font-bold text-orange-500 tracking-wider uppercase text-sm mb-3">Assigned Creators:</h4>
+              <div className="flex flex-wrap gap-3">
+                {creators.filter(c => (selectedShooting.creatorIds || []).includes(c.id)).map(creator => (
+                  <span key={creator.id} className="bg-slate-700/50 text-white font-bold text-sm px-4 py-2 rounded-full">{creator.name}</span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

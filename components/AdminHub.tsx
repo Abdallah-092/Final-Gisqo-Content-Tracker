@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, ContentEntry, AppSettings, Notice, Client, Holiday, UserRole } from '../types';
+import { User, ContentEntry, AppSettings, Notice, Client, Holiday, Shooting, UserRole } from '../types';
 import PeopleManagement from './PeopleManagement';
 import Settings from './Settings';
 import Holidays from './Holidays';
+import Shootings from './Shootings';
 import ConfirmModal from './ConfirmModal';
 import { db } from '../firebase';
 import { doc, updateDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
@@ -20,15 +21,19 @@ interface AdminHubProps {
   setNotices: (n: Notice[]) => void;
   holidays: Holiday[];
   setHolidays: (h: Holiday[]) => void;
+  shootings: Shooting[];
+  addShooting: (shooting: Omit<Shooting, 'id'>) => Promise<void>;
+  updateShooting: (shooting: Shooting) => Promise<void>;
+  deleteShooting: (id: string) => Promise<void>;
   setCreators: (u: User[]) => void;
   updateCreator: (u: User) => void;
   addContent: (e: Omit<ContentEntry, 'id'>) => void;
 }
 
 const AdminHub: React.FC<AdminHubProps> = ({ 
-  entries, creators, clients, setClients, settings, setSettings, notices, setNotices, holidays, setHolidays, setCreators, updateCreator, addContent
+  entries, creators, clients, setClients, settings, setSettings, notices, setNotices, holidays, setHolidays, shootings, addShooting, updateShooting, deleteShooting, setCreators, updateCreator, addContent
 }) => {
-  const [activeTab, setActiveTab] = useState<'reports' | 'people' | 'clients' | 'holidays' | 'settings'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'people' | 'clients' | 'holidays' | 'shootings' | 'settings'>('reports');
   const [peopleViewTab, setPeopleViewTab] = useState<'active' | 'archived'>('active');
   const [clientViewTab, setClientViewTab] = useState<'active' | 'archived'>('active');
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
@@ -238,7 +243,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
           </div>
           <div className="flex justify-center w-full">
             <div className="flex bg-[#1f293b]/80 p-2 rounded-[2.5rem] border border-slate-700/50 backdrop-blur-xl shadow-2xl shadow-black/40">
-              {(['reports', 'people', 'clients', 'holidays', 'settings'] as const).map(tab => (
+              {(['reports', 'people', 'clients', 'holidays', 'shootings', 'settings'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center px-10 py-4 rounded-[1.8rem] text-xs font-black tracking-[0.2em] transition-all hover:scale-105 active:scale-95 ${activeTab === tab ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/40' : 'text-slate-400 hover:text-white'}`}>
                   {tab.toUpperCase()}
                 </button>
@@ -519,6 +524,9 @@ const AdminHub: React.FC<AdminHubProps> = ({
 
         {/* Holidays Tab */}
         {activeTab === 'holidays' && <Holidays holidays={holidays} addHoliday={addHoliday} updateHoliday={updateHoliday} deleteHoliday={deleteHoliday} />}
+
+        {/* Shootings Tab */}
+        {activeTab === 'shootings' && <Shootings shootings={shootings} clients={clients} creators={creators} addShooting={addShooting} updateShooting={updateShooting} deleteShooting={deleteShooting} />}
 
         {/* Settings Tab */}
         {activeTab === 'settings' && <Settings settings={settings} setSettings={setSettings} notices={notices} setNotices={setNotices} />}
