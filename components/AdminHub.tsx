@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, ContentEntry, AppSettings, Notice, Client, UserRole } from '../types';
+import { User, ContentEntry, AppSettings, Notice, Client, Holiday, UserRole } from '../types';
 import PeopleManagement from './PeopleManagement';
 import Settings from './Settings';
+import Holidays from './Holidays';
 import ConfirmModal from './ConfirmModal';
 import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
 import { Plus, Archive, ArchiveRestore, Pencil } from 'lucide-react';
 
 interface AdminHubProps {
@@ -17,15 +18,17 @@ interface AdminHubProps {
   setSettings: (s: AppSettings) => void;
   notices: Notice[];
   setNotices: (n: Notice[]) => void;
+  holidays: Holiday[];
+  setHolidays: (h: Holiday[]) => void;
   setCreators: (u: User[]) => void;
   updateCreator: (u: User) => void;
   addContent: (e: Omit<ContentEntry, 'id'>) => void;
 }
 
 const AdminHub: React.FC<AdminHubProps> = ({ 
-  entries, creators, clients, setClients, settings, setSettings, notices, setNotices, setCreators, updateCreator, addContent
+  entries, creators, clients, setClients, settings, setSettings, notices, setNotices, holidays, setHolidays, setCreators, updateCreator, addContent
 }) => {
-  const [activeTab, setActiveTab] = useState<'reports' | 'people' | 'clients' | 'settings'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'people' | 'clients' | 'holidays' | 'settings'>('reports');
   const [peopleViewTab, setPeopleViewTab] = useState<'active' | 'archived'>('active');
   const [clientViewTab, setClientViewTab] = useState<'active' | 'archived'>('active');
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
@@ -94,8 +97,8 @@ const AdminHub: React.FC<AdminHubProps> = ({
     const byType = { Video: 0, Flyer: 0, Animation: 0, Newsletter: 0, Other: 0 };
     filteredEntries.forEach(e => { if(e.type in byType) byType[e.type]++; });
     const performance = creators.filter(u => u.role === 'CREATOR' && u.active).map(c => {
-      const count = filteredEntries.filter(e => e.creatorId === c.id).length;
       let periodGoal = reportPeriod === 'weekly' ? settings.dailyGoal * 5 : (reportPeriod === 'monthly' ? settings.dailyGoal * 22 : settings.dailyGoal);
+      const count = filteredEntries.filter(e => e.creatorId === c.id).length;
       return { ...c, count, goal: periodGoal, diff: count - periodGoal, status: count >= periodGoal ? 'Excess' : 'Shortage' };
     });
     return { total, byType, performance };
@@ -204,6 +207,24 @@ const AdminHub: React.FC<AdminHubProps> = ({
     }
   };
 
+  // Holiday Management
+  const addHoliday = async (holiday: Omit<Holiday, 'id'>) => {
+    const docRef = await addDoc(collection(db, "holidays"), holiday);
+    setHolidays([...holidays, { ...holiday, id: docRef.id }]);
+  };
+
+  const updateHoliday = async (holiday: Holiday) => {
+    const docRef = doc(db, "holidays", holiday.id);
+    await updateDoc(docRef, { name: holiday.name, date: holiday.date });
+    setHolidays(holidays.map(h => h.id === holiday.id ? holiday : h));
+  };
+
+  const deleteHoliday = async (id: string) => {
+    const docRef = doc(db, "holidays", id);
+    await deleteDoc(docRef);
+    setHolidays(holidays.filter(h => h.id !== id));
+  };
+
   return (
     <>
       <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
@@ -217,7 +238,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
           </div>
           <div className="flex justify-center w-full">
             <div className="flex bg-[#1f293b]/80 p-2 rounded-[2.5rem] border border-slate-700/50 backdrop-blur-xl shadow-2xl shadow-black/40">
-              {(['reports', 'people', 'clients', 'settings'] as const).map(tab => (
+              {(['reports', 'people', 'clients', 'holidays', 'settings'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center px-10 py-4 rounded-[1.8rem] text-xs font-black tracking-[0.2em] transition-all hover:scale-105 active:scale-95 ${activeTab === tab ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/40' : 'text-slate-400 hover:text-white'}`}>
                   {tab.toUpperCase()}
                 </button>
@@ -496,6 +517,9 @@ const AdminHub: React.FC<AdminHubProps> = ({
           </div>
         )}
 
+        {/* Holidays Tab */}
+        {activeTab === 'holidays' && <Holidays holidays={holidays} addHoliday={addHoliday} updateHoliday={updateHoliday} deleteHoliday={deleteHoliday} />}
+
         {/* Settings Tab */}
         {activeTab === 'settings' && <Settings settings={settings} setSettings={setSettings} notices={notices} setNotices={setNotices} />}
       </div>
@@ -523,7 +547,6 @@ const AdminHub: React.FC<AdminHubProps> = ({
           </div>
         </div>
       )}
-
 
       {/* Person Form Modal */}
       {showPersonForm && (

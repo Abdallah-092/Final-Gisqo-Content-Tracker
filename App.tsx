@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc, updateDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
-import { User, ContentEntry, AppSettings, Notice, Client } from './types';
+import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { User, ContentEntry, AppSettings, Notice, Client, Holiday } from './types';
 import Sidebar from './components/Sidebar';
 import AdminHub from './components/AdminHub';
 import CreatorDashboard from './components/CreatorDashboard';
@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [contentEntries, setContentEntries] = useState<ContentEntry[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
 
   const [view, setView] = useState<'dashboard' | 'admin'>('dashboard');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -88,6 +89,11 @@ const App: React.FC = () => {
         setNotices(snapshot.docs.map(doc => doc.data() as Notice));
     });
 
+    const holidaysCollectionRef = collection(db, 'holidays');
+    const unsubscribeHolidays = onSnapshot(holidaysCollectionRef, (snapshot) => {
+        setHolidays(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Holiday)));
+    });
+
 
     return () => {
         unsubscribeSettings();
@@ -95,6 +101,7 @@ const App: React.FC = () => {
         unsubscribeClients();
         unsubscribeEntries();
         unsubscribeNotices();
+        unsubscribeHolidays();
     };
   }, []);
 
@@ -182,6 +189,15 @@ const App: React.FC = () => {
       await batch.commit();
   }
 
+  const handleSetHolidays = async (newHolidays: Holiday[]) => {
+    const batch = writeBatch(db);
+    newHolidays.forEach(holiday => {
+        const docRef = doc(db, "holidays", holiday.id);
+        batch.set(docRef, { name: holiday.name, date: holiday.date });
+    });
+    await batch.commit();
+  }
+
   const handleSetSettings = async (newSettings: AppSettings) => {
       const docRef = doc(db, "settings", "main");
       await setDoc(docRef, { ...newSettings });
@@ -222,6 +238,8 @@ const App: React.FC = () => {
             setSettings={handleSetSettings}
             notices={notices}
             setNotices={handleSetNotices}
+            holidays={holidays}
+            setHolidays={handleSetHolidays}
             setCreators={handleSetCreators}
             updateCreator={updateCreator}
             addContent={addContent}
@@ -236,6 +254,7 @@ const App: React.FC = () => {
             updateContent={updateContent}
             deleteContent={deleteContent}
             notices={notices}
+            holidays={holidays}
             creators={creators}
           />
         )}

@@ -49,3 +49,9 @@ export interface AppSettings {
   favicon?: string;
   primaryColor?: string;
 }
+
+export interface Holiday {
+  id: string;
+  name: string;
+  date: string; // ISO string YYYY-MM-DD
+}

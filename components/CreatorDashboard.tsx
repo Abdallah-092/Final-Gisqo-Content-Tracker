@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, ContentEntry, AppSettings, Notice, ContentType, Client } from '../types';
+import { User, ContentEntry, AppSettings, Notice, ContentType, Client, Holiday } from '../types';
 import ConfirmModal from './ConfirmModal';
 
 interface CreatorDashboardProps {
@@ -12,11 +12,12 @@ interface CreatorDashboardProps {
   updateContent: (entry: ContentEntry) => void;
   deleteContent: (id: string) => void;
   notices: Notice[];
+  holidays: Holiday[];
   creators: User[];
 }
 
 const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ 
-  user, entries, clients, settings, addContent, updateContent, deleteContent, notices, creators
+  user, entries, clients, settings, addContent, updateContent, deleteContent, notices, holidays, creators
 }) => {
   const [showLogModal, setShowLogModal] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -134,6 +135,10 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
     });
   }, [filteredEntries, clients, selectedMonth, selectedYear, settings.monthlyClientGoal]);
 
+  const isHoliday = (dateStr: string) => {
+    return holidays.some(h => h.date === dateStr);
+  };
+
   // Load editing data into form
   useEffect(() => {
     if (editingEntry) {
@@ -190,6 +195,10 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isHoliday(formData.date)) {
+        alert("You cannot log an entry on a holiday.");
+        return;
+    }
     if (!formData.clientId) {
       alert("Please assign this content to a client.");
       return;
@@ -247,7 +256,8 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   
   const isWeekendNow = new Date().getDay() === 0 || new Date().getDay() === 6;
   const weekendSubmissionsDisabled = !settings.allowWeekends;
-  const isLogButtonDisabled = isCreator && weekendSubmissionsDisabled && isWeekendNow;
+  const isTodayHoliday = isHoliday(todayStr);
+  const isLogButtonDisabled = (isCreator && weekendSubmissionsDisabled && isWeekendNow) || isTodayHoliday;
 
   return (
     <>
@@ -480,7 +490,8 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
                   const isToday = dateStr === todayStr;
                   const isDiffMonth = dateObj.getMonth() !== selectedMonth;
-                  
+                  const holiday = holidays.find(h => h.date === dateStr);
+
                   const creatorGroups = creators
                     .filter(c => dayEntries.some(e => e.creatorId === c.id))
                     .sort((a, b) => {
@@ -492,7 +503,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                   return (
                     <div 
                       key={dateStr} 
-                      className={`relative flex flex-col rounded-[2.5rem] border transition-all duration-300 min-h-[420px] md:min-h-[480px] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)] group/card ${isToday ? 'ring-2 ring-orange-500/50 scale-[1.01] md:scale-[1.02] z-10' : ''} ${isDiffMonth ? 'opacity-30 grayscale-[0.8]' : ''} ${isMet ? 'bg-[#0f2a24] border-emerald-500/20' : isWeekend ? 'bg-[#1a2333]/40 border-slate-800' : 'bg-[#1f293b] border-slate-700/50'}`}
+                      className={`relative flex flex-col rounded-[2.5rem] border transition-all duration-300 min-h-[420px] md:min-h-[480px] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)] group/card ${isToday ? 'ring-2 ring-orange-500/50 scale-[1.01] md:scale-[1.02] z-10' : ''} ${isDiffMonth ? 'opacity-30 grayscale-[0.8]' : ''} ${holiday ? 'bg-purple-900/20 border-purple-500/20' : (isMet ? 'bg-[#0f2a24] border-emerald-500/20' : isWeekend ? 'bg-[#1a2333]/40 border-slate-800' : 'bg-[#1f293b] border-slate-700/50')}`}
                     >
                       <div className="p-6 pb-4">
                         <div className="flex justify-between items-start">
@@ -503,8 +514,10 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                             </p>
                             <p className="text-4xl font-black text-white leading-none">{dateObj.getDate()}</p>
                           </div>
-                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-[1.25rem] flex items-center justify-center shadow-lg transition-transform group-hover/card:scale-110 ${isMet ? 'bg-emerald-500 text-emerald-950' : 'bg-orange-500 text-white'}`}>
-                            {isMet ? (
+                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-[1.25rem] flex items-center justify-center shadow-lg transition-transform group-hover/card:scale-110 ${holiday ? 'bg-purple-500 text-white' : (isMet ? 'bg-emerald-500 text-emerald-950' : 'bg-orange-500 text-white')}`}>
+                            {holiday ? (
+                               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
+                            ) : isMet ? (
                               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                             ) : (
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -515,7 +528,14 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                       <div className="w-full h-px bg-slate-700/30"></div>
                       <div className="p-4 md:p-5 flex-1 flex flex-col">
                         <div className="space-y-4 flex-1">
-                          {dayEntries.length > 0 ? (
+                          {holiday ? (
+                             <div className="flex flex-col items-center justify-center py-20 text-purple-400 opacity-50 h-full group-hover/card:opacity-80 transition-opacity">
+                                <div className="bg-purple-900/50 p-4 rounded-[1.25rem] mb-4 shadow-inner group-hover/card:scale-110 transition-transform">
+                                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
+                                </div>
+                                <p className="text-xs font-black uppercase tracking-widest text-center">{holiday.name}</p>
+                             </div>
+                          ) : dayEntries.length > 0 ? (
                             <>
                               {creatorGroups.map((creator) => {
                                 const creatorEntries = dayEntries.filter(e => e.creatorId === creator.id);
