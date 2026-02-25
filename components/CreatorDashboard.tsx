@@ -48,6 +48,8 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
     clientId: '' // Mandatory client selection
   });
 
+  const activeCreators = useMemo(() => creators.filter(c => c.active && c.role === 'CREATOR'), [creators]);
+
   const filteredEntries = useMemo(() => {
     if (settings.allowWeekends) {
       return entries;
@@ -90,30 +92,31 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       Other: periodEntries.filter(e => e.type === 'Other').length,
     };
 
-    const creatorOutput = creators
-      .filter(c => c.role === 'CREATOR')
-      .map(c => ({
-        id: c.id,
-        name: c.name,
-        count: filteredEntries.filter(e => {
-          const entryDate = new Date(e.date);
-          let inPeriod = false;
-          if (reportPeriod === 'daily') inPeriod = e.date === todayStr;
-          else if (reportPeriod === 'weekly') {
-            const weekAgo = new Date(); weekAgo.setDate(now.getDate() - 7);
-            inPeriod = entryDate >= weekAgo;
-          }
-          else inPeriod = entryDate.getMonth() === selectedMonth && entryDate.getFullYear() === selectedYear;
-          return inPeriod && e.creatorId === c.id;
-        }).length
-      }))
+    // A creator should appear in a report if they are active, OR if they logged content in the period.
+    const creatorIdsInPeriod = [...new Set(periodEntries.map(e => e.creatorId))];
+    const activeCreatorIds = activeCreators.map(c => c.id);
+    const allRelevantCreatorIds = [...new Set([...creatorIdsInPeriod, ...activeCreatorIds])];
+
+    const creatorOutput = allRelevantCreatorIds
+      .map(id => {
+        const creator = creators.find(c => c.id === id);
+        if (!creator) return null;
+
+        const count = periodEntries.filter(e => e.creatorId === id).length;
+        return {
+          id: creator.id,
+          name: creator.name,
+          count: count
+        };
+      })
+      .filter((c): c is { id: string; name: string; count: number; } => c !== null)
       .sort((a, b) => b.count - a.count);
 
     const total = periodEntries.length;
     const maxOutput = Math.max(...creatorOutput.map(c => c.count), 1);
 
     return { total, byType, creatorOutput, maxOutput };
-  }, [filteredEntries, selectedMonth, selectedYear, creators, reportPeriod, todayStr, filterCreatorId]);
+  }, [filteredEntries, selectedMonth, selectedYear, creators, reportPeriod, todayStr, filterCreatorId, activeCreators]);
 
   // Client Specific Progress
   const clientHealth = useMemo(() => {
@@ -278,7 +281,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-tight hover:scale-[1.01] transition-transform cursor-default uppercase">Content Tracker</h1>
             <div className="mt-2 text-slate-400 font-bold text-base md:text-lg flex flex-wrap items-center gap-4">
               {isAdmin ? (
-                <span>Monitoring <span className="text-orange-500 font-black animate-pulse">{creators.filter(u => u.role === 'CREATOR').length} Content Creators</span> activity.</span>
+                <span>Monitoring <span className="text-orange-500 font-black animate-pulse">{activeCreators.length} Content Creators</span> activity.</span>
               ) : (
                 <span>Daily Goal: <span className={`font-black ${userTodayCount >= settings.dailyGoal ? 'text-emerald-500' : 'text-orange-500'}`}>{userTodayCount}/{settings.dailyGoal} contents</span> today.</span>
               )}
@@ -373,7 +376,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                        className="bg-transparent text-white font-black text-xs uppercase tracking-widest focus:outline-none cursor-pointer pr-4"
                      >
                        <option value="all" className="bg-[#1a2333]">Whole Team</option>
-                       {creators.filter(c => c.role === 'CREATOR').map(c => (
+                       {activeCreators.map(c => (
                          <option key={c.id} value={c.id} className="bg-[#1a2333]">{c.name}</option>
                        ))}
                      </select>
@@ -663,7 +666,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                 <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-700/30">
                   <div>
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Creator</p>
-                    <p className="text-xl font-black text-white">{creators.find(c => c.id === viewingEntry.creatorId)?.name || 'Unknown'}</p>
+                    <p className="text-xl font-black text-white">{creators.find(c => c.id === viewingEntry.creatorId)?.name || 'Unknown Creator'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Client Portfolio</p>
@@ -708,7 +711,7 @@ const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                     <div className="relative group">
                       <select required value={formData.creatorId} onChange={e => setFormData({...formData, creatorId: e.target.value})} className="w-full bg-[#0f172a] border border-slate-800 rounded-2xl px-5 py-4 text-white font-bold focus:outline-none focus:border-orange-500 appearance-none shadow-sm transition-all cursor-pointer">
                         <option value="" disabled>Select a creator</option>
-                        {creators.filter(u => u.role === 'CREATOR').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        {activeCreators.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                       <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-orange-500 transition-colors">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>

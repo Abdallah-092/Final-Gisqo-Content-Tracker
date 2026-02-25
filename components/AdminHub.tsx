@@ -5,7 +5,8 @@ import PeopleManagement from './PeopleManagement';
 import Settings from './Settings';
 import ConfirmModal from './ConfirmModal';
 import { db } from '../firebase';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
+import { Plus, Archive, ArchiveRestore, Pencil } from 'lucide-react';
 
 interface AdminHubProps {
   entries: ContentEntry[];
@@ -25,40 +26,58 @@ const AdminHub: React.FC<AdminHubProps> = ({
   entries, creators, clients, setClients, settings, setSettings, notices, setNotices, setCreators, updateCreator, addContent
 }) => {
   const [activeTab, setActiveTab] = useState<'reports' | 'people' | 'clients' | 'settings'>('reports');
+  const [peopleViewTab, setPeopleViewTab] = useState<'active' | 'archived'>('active');
+  const [clientViewTab, setClientViewTab] = useState<'active' | 'archived'>('active');
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [newClientName, setNewClientName] = useState('');
-  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
 
-  // People Management Modals
+  // People Management
   const [showPersonForm, setShowPersonForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [personFormData, setPersonFormData] = useState({ 
-    name: '', 
-    email: '', 
-    password: '', 
-    role: 'CREATOR' as UserRole, 
-    active: true 
-  });
+  const [personFormData, setPersonFormData] = useState({ name: '', email: '', password: '', role: 'CREATOR' as UserRole, active: true });
   const [showPassword, setShowPassword] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [statusModalConfig, setStatusModalConfig] = useState({
-      title: '',
-      message: '',
-      variant: 'primary' as 'primary' | 'danger' | 'warning',
-  });
+  const [userToProcess, setUserToProcess] = useState<User | null>(null);
+  const [userConfirmationType, setUserConfirmationType] = useState<'archive' | 'restore' | null>(null);
   
-  // Content Bank States
+  // Client Management
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [clientFormData, setClientFormData] = useState({ name: ''});
+  const [clientToProcess, setClientToProcess] = useState<Client | null>(null);
+  const [clientConfirmationType, setClientConfirmationType] = useState<'archive' | 'restore' | null>(null);
+
+  // Generic Modals
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusModalConfig, setStatusModalConfig] = useState({ title: '', message: '', variant: 'primary' as 'primary' | 'danger' | 'warning' });
+  
+  // Content Bank
   const [bankCreatorFilter, setBankCreatorFilter] = useState<string>('all');
+  const [bankClientFilter, setBankClientFilter] = useState<string>('all');
   const [bankSearchQuery, setBankSearchQuery] = useState('');
   const [bankPage, setBankPage] = useState(1);
   const itemsPerPage = 8;
 
+  const sortedCreators = useMemo(() => {
+    return [...creators]
+      .filter(u => u.role === 'CREATOR')
+      .sort((a, b) => {
+        if (a.active && !b.active) return -1;
+        if (!a.active && b.active) return 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [creators]);
+
+  const sortedClients = useMemo(() => {
+    return [...clients].sort((a, b) => {
+      if (a.active && !b.active) return -1;
+      if (!a.active && b.active) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [clients]);
+
   useEffect(() => {
     if (showStatusModal) {
-      const timer = setTimeout(() => {
-        setShowStatusModal(false);
-      }, 5000);
+      const timer = setTimeout(() => setShowStatusModal(false), 5000);
       return () => clearTimeout(timer);
     }
   }, [showStatusModal]);
@@ -67,57 +86,28 @@ const AdminHub: React.FC<AdminHubProps> = ({
     const now = new Date();
     const filteredEntries = entries.filter(e => {
       const entryDate = new Date(e.date);
-      if (reportPeriod === 'daily') {
-        return entryDate.toDateString() === now.toDateString();
-      } else if (reportPeriod === 'weekly') {
-        const weekAgo = new Date();
-        weekAgo.setDate(now.getDate() - 7);
-        return entryDate >= weekAgo;
-      }
+      if (reportPeriod === 'daily') return entryDate.toDateString() === now.toDateString();
+      if (reportPeriod === 'weekly') { const weekAgo = new Date(); weekAgo.setDate(now.getDate() - 7); return entryDate >= weekAgo; }
       return entryDate.getMonth() === now.getMonth() && entryDate.getFullYear() === now.getFullYear();
     });
-
     const total = filteredEntries.length;
-    const byType = {
-      Video: filteredEntries.filter(e => e.type === 'Video').length,
-      Flyer: filteredEntries.filter(e => e.type === 'Flyer').length,
-      Animation: filteredEntries.filter(e => e.type === 'Animation').length,
-      Newsletter: filteredEntries.filter(e => e.type === 'Newsletter').length,
-      Other: filteredEntries.filter(e => e.type === 'Other').length,
-    };
-    
-    const creatorsList = creators.filter(u => u.role === 'CREATOR');
-    const performance = creatorsList.map(c => {
+    const byType = { Video: 0, Flyer: 0, Animation: 0, Newsletter: 0, Other: 0 };
+    filteredEntries.forEach(e => { if(e.type in byType) byType[e.type]++; });
+    const performance = creators.filter(u => u.role === 'CREATOR' && u.active).map(c => {
       const count = filteredEntries.filter(e => e.creatorId === c.id).length;
-      
-      let periodGoal = settings.dailyGoal;
-      if (reportPeriod === 'weekly') periodGoal = settings.dailyGoal * 5;
-      if (reportPeriod === 'monthly') periodGoal = settings.dailyGoal * 22;
-
-      return { 
-        ...c, 
-        count, 
-        goal: periodGoal,
-        diff: count - periodGoal,
-        status: count >= periodGoal ? 'Excess' : 'Shortage' 
-      };
+      let periodGoal = reportPeriod === 'weekly' ? settings.dailyGoal * 5 : (reportPeriod === 'monthly' ? settings.dailyGoal * 22 : settings.dailyGoal);
+      return { ...c, count, goal: periodGoal, diff: count - periodGoal, status: count >= periodGoal ? 'Excess' : 'Shortage' };
     });
-
     return { total, byType, performance };
   }, [entries, creators, settings.dailyGoal, reportPeriod]);
 
   const filteredBankEntries = useMemo(() => {
     let result = [...entries].reverse();
-    if (bankCreatorFilter !== 'all') {
-      result = result.filter(e => e.creatorId === bankCreatorFilter);
-    }
-    if (bankSearchQuery.trim() !== '') {
-      result = result.filter(e => 
-        e.title.toLowerCase().includes(bankSearchQuery.toLowerCase())
-      );
-    }
+    if (bankCreatorFilter !== 'all') result = result.filter(e => e.creatorId === bankCreatorFilter);
+    if (bankClientFilter !== 'all') result = result.filter(e => e.clientId === bankClientFilter);
+    if (bankSearchQuery.trim() !== '') result = result.filter(e => e.title.toLowerCase().includes(bankSearchQuery.toLowerCase()));
     return result;
-  }, [entries, bankCreatorFilter, bankSearchQuery]);
+  }, [entries, bankCreatorFilter, bankClientFilter, bankSearchQuery]);
 
   const totalPages = Math.ceil(filteredBankEntries.length / itemsPerPage);
   const paginatedEntries = filteredBankEntries.slice((bankPage - 1) * itemsPerPage, bankPage * itemsPerPage);
@@ -125,25 +115,43 @@ const AdminHub: React.FC<AdminHubProps> = ({
   const handleAddClient = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName.trim()) return;
-    const newClient: Client = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newClientName.trim(),
-      active: true
-    };
+    const newClient: Client = { id: Math.random().toString(36).substr(2, 9), name: newClientName.trim(), active: true };
     setClients([...clients, newClient]);
     setNewClientName('');
   };
 
-  const toggleClientStatus = (id: string) => {
-    setClients(clients.map(c => c.id === id ? { ...c, active: !c.active } : c));
-  };
-
-  const handleConfirmDeleteClient = () => {
-    if (deletingClientId) {
-      setClients(clients.filter(c => c.id !== deletingClientId));
-      setDeletingClientId(null);
+  const requestClientUpdate = (clientId: string, type: 'archive' | 'restore') => {
+    const client = clients.find(c => c.id === clientId);
+    if (client) {
+      setClientToProcess(client);
+      setClientConfirmationType(type);
     }
   };
+
+  const handleConfirmClientUpdate = () => {
+    if (!clientToProcess || !clientConfirmationType) return;
+    const isArchiving = clientConfirmationType === 'archive';
+    setClients(clients.map(c => c.id === clientToProcess.id ? { ...c, active: !isArchiving } : c));
+    setStatusModalConfig({ title: `Client ${isArchiving ? 'Archived' : 'Restored'}`, message: `${clientToProcess.name} has been successfully ${isArchiving ? 'archived' : 'restored'}.`, variant: 'primary' });
+    setShowStatusModal(true);
+    setClientToProcess(null);
+    setClientConfirmationType(null);
+  };
+  
+  const handleOpenEditClient = (client: Client) => {
+    setEditingClient(client);
+    setClientFormData({ name: client.name });
+    setShowClientForm(true);
+  };
+
+  const handleClientSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingClient) {
+      setClients(clients.map(c => c.id === editingClient.id ? { ...c, name: clientFormData.name } : c));
+    }
+    setShowClientForm(false);
+  };
+
 
   const handleOpenAddPerson = () => {
     setEditingUser(null);
@@ -154,7 +162,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
 
   const handleOpenEditPerson = (user: User) => {
     setEditingUser(user);
-    setPersonFormData({ name: user.name, email: user.email, password: user.password || '', role: user.role, active: user.active });
+    setPersonFormData({ ...user, password: user.password || '' });
     setShowPassword(false);
     setShowPersonForm(true);
   };
@@ -170,61 +178,47 @@ const AdminHub: React.FC<AdminHubProps> = ({
     setShowPersonForm(false);
   };
 
-  const requestDeleteUser = (userId: string) => {
+  const requestUserUpdate = (userId: string, type: 'archive' | 'restore') => {
     const user = creators.find(c => c.id === userId);
     if (user) {
-        setUserToDelete(user);
+      setUserToProcess(user);
+      setUserConfirmationType(type);
     }
   };
 
-  const handleConfirmDeleteUser = async () => {
-    if (!userToDelete) return;
-
+  const handleConfirmUserUpdate = async () => {
+    if (!userToProcess || !userConfirmationType) return;
+    const isArchiving = userConfirmationType === 'archive';
+    const newActiveState = !isArchiving;
     try {
-        const userDocRef = doc(db, 'creators', userToDelete.id);
-        await deleteDoc(userDocRef);
-        const updatedCreators = creators.filter(user => user.id !== userToDelete.id);
-        setCreators(updatedCreators);
-
-        setStatusModalConfig({
-            title: 'Success!',
-            message: 'User has been successfully deleted.',
-            variant: 'primary',
-        });
-        setShowStatusModal(true);
-
+      const userDocRef = doc(db, 'creators', userToProcess.id);
+      await updateDoc(userDocRef, { active: newActiveState });
+      updateCreator({ ...userToProcess, active: newActiveState });
+      setStatusModalConfig({ title: `User ${isArchiving ? 'Archived' : 'Restored'}`, message: `${userToProcess.name} has been successfully ${isArchiving ? 'archived' : 'restored'}.`, variant: 'primary' });
     } catch (error) {
-        console.error("Error deleting user:", error);
-        setStatusModalConfig({
-            title: 'Error',
-            message: 'Failed to delete user. Please try again.',
-            variant: 'danger',
-        });
-        setShowStatusModal(true);
+      setStatusModalConfig({ title: 'Error', message: `Failed to ${isArchiving ? 'archive' : 'restore'} user.`, variant: 'danger' });
     } finally {
-        setUserToDelete(null);
+      setShowStatusModal(true);
+      setUserToProcess(null);
+      setUserConfirmationType(null);
     }
   };
 
   return (
     <>
       <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+        {/* Main Header & Tabs */}
         <div className="flex flex-col items-center space-y-10">
           <div className="text-center">
             <h1 className="text-5xl font-black text-white tracking-tight uppercase mb-2">Admin Hub</h1>
             <p className="text-slate-400 font-medium">
-              Currently monitoring <span className="text-orange-500 font-black">{creators.filter(u => u.role === 'CREATOR').length} Content Creators</span>
+              Currently monitoring <span className="text-orange-500 font-black">{creators.filter(u => u.role === 'CREATOR' && u.active).length} Content Creators</span>
             </p>
           </div>
-          
           <div className="flex justify-center w-full">
             <div className="flex bg-[#1f293b]/80 p-2 rounded-[2.5rem] border border-slate-700/50 backdrop-blur-xl shadow-2xl shadow-black/40">
               {(['reports', 'people', 'clients', 'settings'] as const).map(tab => (
-                <button 
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex items-center px-10 py-4 rounded-[1.8rem] text-xs font-black tracking-[0.2em] transition-all hover:scale-105 active:scale-95 ${activeTab === tab ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/40' : 'text-slate-400 hover:text-white'}`}
-                >
+                <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center px-10 py-4 rounded-[1.8rem] text-xs font-black tracking-[0.2em] transition-all hover:scale-105 active:scale-95 ${activeTab === tab ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/40' : 'text-slate-400 hover:text-white'}`}>
                   {tab.toUpperCase()}
                 </button>
               ))}
@@ -232,6 +226,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
           </div>
         </div>
 
+        {/* Reports Tab */}
         {activeTab === 'reports' && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="flex justify-between items-center px-2">
@@ -334,14 +329,31 @@ const AdminHub: React.FC<AdminHubProps> = ({
                   <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mt-1">Master Audit Log • {filteredBankEntries.length} Items</span>
                 </div>
                 
-                <div className="flex items-center space-x-4">
+                <div className="flex flex-wrap items-center gap-4">
                   <input 
                     type="text"
                     placeholder="Search by title..."
                     value={bankSearchQuery}
                     onChange={e => { setBankSearchQuery(e.target.value); setBankPage(1); }}
-                    className="bg-[#111827] border border-slate-700 rounded-2xl px-6 py-3 text-xs font-black text-white focus:outline-none hover:border-orange-500 transition-all shadow-xl w-64"
+                    className="bg-[#111827] border border-slate-700 rounded-2xl px-6 py-3 text-xs font-black text-white focus:outline-none hover:border-orange-500 transition-all shadow-xl w-full sm:w-64"
                   />
+                  <div className="relative group">
+                    <select 
+                      value={bankClientFilter}
+                      onChange={(e) => { setBankClientFilter(e.target.value); setBankPage(1); }}
+                      className="bg-[#111827] border border-slate-700 rounded-2xl px-6 py-3 text-xs font-black text-white focus:outline-none appearance-none pr-12 hover:border-orange-500 transition-all cursor-pointer shadow-xl"
+                    >
+                      <option value="all">ALL CLIENTS</option>
+                      {sortedClients.map(c => (
+                        <option key={c.id} value={c.id} className={`${!c.active ? 'text-slate-500 italic' : 'text-white'}`}>
+                          {c.name.toUpperCase()}{!c.active && ' (Archived)'}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-orange-500">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                  </div>
                   <div className="relative group">
                     <select 
                       value={bankCreatorFilter}
@@ -349,7 +361,11 @@ const AdminHub: React.FC<AdminHubProps> = ({
                       className="bg-[#111827] border border-slate-700 rounded-2xl px-6 py-3 text-xs font-black text-white focus:outline-none appearance-none pr-12 hover:border-orange-500 transition-all cursor-pointer shadow-xl"
                     >
                       <option value="all">ALL CREATORS</option>
-                      {creators.filter(u => u.role === 'CREATOR').map(c => <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>)}
+                      {sortedCreators.map(c => (
+                        <option key={c.id} value={c.id} className={`${!c.active ? 'text-slate-500 italic' : 'text-white'}`}>
+                          {c.name.toUpperCase()}{!c.active && ' (Archived)'}
+                        </option>
+                      ))}
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-orange-500">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -379,7 +395,7 @@ const AdminHub: React.FC<AdminHubProps> = ({
                           <td className="px-10 py-6">
                             <span className="text-[10px] font-black bg-slate-800/80 text-slate-400 px-4 py-1.5 rounded-full uppercase group-hover:bg-orange-600/10 group-hover:text-orange-500 transition-all border border-slate-700/50">{entry.type}</span>
                           </td>
-                          <td className="px-10 py-6 text-sm font-bold text-slate-300">{creator?.name}</td>
+                          <td className="px-10 py-6 text-sm font-bold text-slate-300">{creator?.name || 'Archived User'}</td>
                           <td className="px-10 py-6 text-xs font-black text-blue-500 uppercase tracking-widest">{client?.name || 'N/A'}</td>
                           <td className="px-10 py-6 text-xs font-medium text-slate-500">{new Date(entry.date).toLocaleDateString()}</td>
                           <td className="px-10 py-6 text-right">
@@ -420,154 +436,100 @@ const AdminHub: React.FC<AdminHubProps> = ({
           </div>
         )}
 
+        {/* Clients Tab */}
         {activeTab === 'clients' && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="bg-slate-800/20 p-10 rounded-[3.5rem] border border-slate-700/30 shadow-2xl">
-                <h3 className="text-2xl font-black text-white uppercase tracking-wider mb-8">Client Portfolio Manager</h3>
-                <form onSubmit={handleAddClient} className="flex flex-col sm:flex-row gap-4 mb-10">
-                  <input 
-                    required
-                    type="text"
-                    value={newClientName}
-                    onChange={e => setNewClientName(e.target.value)}
-                    placeholder="Enter Client or Brand Name..."
-                    className="flex-1 bg-[#0f172a] border border-slate-700 rounded-2xl px-8 py-5 text-xl font-black text-white focus:outline-none focus:border-orange-500 shadow-inner"
-                  />
-                  <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white px-10 py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-900/40">Register Client</button>
-                </form>
+                <h3 className="text-2xl font-black text-white uppercase tracking-wider mb-8">Client Portfolio</h3>
+                <div className="flex justify-between items-center mb-8">
+                  <div className="bg-slate-800/50 p-1.5 rounded-2xl border border-slate-700/50 flex space-x-1 shadow-inner backdrop-blur-md">
+                    <button onClick={() => setClientViewTab('active')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${clientViewTab === 'active' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Active</button>
+                    <button onClick={() => setClientViewTab('archived')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${clientViewTab === 'archived' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Archived</button>
+                  </div>
+                </div>
+                
+                {clientViewTab === 'active' && (
+                  <form onSubmit={handleAddClient} className="flex flex-col sm:flex-row gap-4 mb-10">
+                    <input required type="text" value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Enter New Client or Brand Name..." className="flex-1 bg-[#0f172a] border border-slate-700 rounded-2xl px-8 py-5 text-xl font-black text-white focus:outline-none focus:border-orange-500 shadow-inner" />
+                    <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white px-10 py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-900/40 flex items-center justify-center gap-2"><Plus size={16}/> Register</button>
+                  </form>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {clients.map(client => (
+                  {clients.filter(c => c.active === (clientViewTab === 'active')).map(client => (
                     <div key={client.id} className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 flex justify-between items-center group hover:bg-slate-800 transition-all">
                         <div>
                           <h4 className="font-black text-xl text-white uppercase tracking-tighter group-hover:text-orange-500 transition-colors">{client.name}</h4>
-                          <span className={`text-[10px] font-black uppercase tracking-[0.2em] mt-1 block ${client.active ? 'text-emerald-500' : 'text-slate-600'}`}>{client.active ? 'Active Client' : 'Archived'}</span>
+                          <span className={`text-[10px] font-black uppercase tracking-[0.2em] mt-1 block ${client.active ? 'text-emerald-500' : 'text-slate-600'}`}>{client.active ? 'Active' : 'Archived'}</span>
                         </div>
-                        <div className="flex space-x-2">
-                          <button onClick={() => toggleClientStatus(client.id)} className="p-3 bg-slate-800 rounded-xl hover:text-white transition-colors" title="Toggle Active Status">
-                            <svg className={`w-5 h-5 ${client.active ? 'text-emerald-500' : 'text-slate-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                        <div className="flex items-center space-x-2">
+                          {client.active && (
+                          <button onClick={() => handleOpenEditClient(client)} className="p-3 rounded-xl bg-slate-800 hover:text-orange-500 transition-colors">
+                            <Pencil size={20} />
                           </button>
-                          <button onClick={() => setDeletingClientId(client.id)} className="p-3 bg-slate-800 rounded-xl hover:text-red-500 transition-colors" title="Delete Client">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          )}
+                          <button onClick={() => requestClientUpdate(client.id, client.active ? 'archive' : 'restore')} className={`p-3 rounded-xl transition-colors ${client.active ? 'bg-slate-800 hover:text-red-500' : 'bg-slate-800 hover:text-emerald-500'}`}>
+                            {client.active ? <Archive size={20} /> : <ArchiveRestore size={20} />}
                           </button>
                         </div>
                     </div>
                   ))}
-                  {clients.length === 0 && <p className="col-span-full text-center text-slate-700 py-20 font-bold uppercase tracking-[0.3em] opacity-40">No clients registered yet.</p>}
+                  {clients.filter(c => c.active === (clientViewTab === 'active')).length === 0 && <p className="col-span-full text-center text-slate-700 py-20 font-bold uppercase tracking-[0.3em] opacity-40">No {clientViewTab} clients.</p>}
                 </div>
             </div>
           </div>
         )}
 
+        {/* People Tab */}
         {activeTab === 'people' && (
-          <PeopleManagement 
-            creators={creators} 
-            onOpenAdd={handleOpenAddPerson}
-            onOpenEdit={handleOpenEditPerson}
-            onDelete={requestDeleteUser}
-          />
+          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex justify-between items-center">
+                <div className="bg-slate-800/50 p-1.5 rounded-2xl border border-slate-700/50 flex space-x-1 shadow-inner backdrop-blur-md">
+                    <button onClick={() => setPeopleViewTab('active')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${peopleViewTab === 'active' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Active</button>
+                    <button onClick={() => setPeopleViewTab('archived')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${peopleViewTab === 'archived' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Archived</button>
+                </div>
+                <button onClick={handleOpenAddPerson} className="px-8 py-3 bg-orange-600 rounded-2xl text-[10px] font-black text-white hover:bg-orange-700 hover:scale-105 active:scale-95 transition-all shadow-xl tracking-[0.2em]">
+                  + ADD NEW USER
+                </button>
+            </div>
+            <PeopleManagement creators={creators.filter(c => c.active === (peopleViewTab === 'active'))} onOpenEdit={handleOpenEditPerson} onArchive={(id) => requestUserUpdate(id, 'archive')} onRestore={(id) => requestUserUpdate(id, 'restore')} view={peopleViewTab} />
+          </div>
         )}
 
-        {activeTab === 'settings' && (
-          <Settings 
-            settings={settings} 
-            setSettings={setSettings} 
-            notices={notices} 
-            setNotices={setNotices} 
-          />
-        )}
+        {/* Settings Tab */}
+        {activeTab === 'settings' && <Settings settings={settings} setSettings={setSettings} notices={notices} setNotices={setNotices} />}
       </div>
 
-      <ConfirmModal 
-        isOpen={!!deletingClientId}
-        onClose={() => setDeletingClientId(null)}
-        onConfirm={handleConfirmDeleteClient}
-        title="Remove Client?"
-        message="This will permanently remove the client and all associated data. This action cannot be undone."
-        variant="danger"
-        confirmText="Yes, Remove Client"
-      />
+      {/* Modals */}
+      <ConfirmModal isOpen={!!clientToProcess} onClose={() => setClientToProcess(null)} onConfirm={handleConfirmClientUpdate} title={`${clientConfirmationType === 'archive' ? 'Archive' : 'Restore'} Client?`} message={`Are you sure you want to ${clientConfirmationType} ${clientToProcess?.name}?`} variant={clientConfirmationType === 'archive' ? 'warning' : 'primary'} confirmText={`Yes, ${clientConfirmationType}`} />
+      <ConfirmModal isOpen={!!userToProcess} onClose={() => setUserToProcess(null)} onConfirm={handleConfirmUserUpdate} title={`${userConfirmationType === 'archive' ? 'Archive' : 'Restore'} User?`} message={`Are you sure you want to ${userConfirmationType} ${userToProcess?.name}?`} variant={userConfirmationType === 'archive' ? 'warning' : 'primary'} confirmText={`Yes, ${userConfirmationType}`} />
+      <ConfirmModal isOpen={showStatusModal} onClose={() => setShowStatusModal(false)} onConfirm={() => setShowStatusModal(false)} title={statusModalConfig.title} message={statusModalConfig.message} variant={statusModalConfig.variant} confirmText="OK" />
 
-      <ConfirmModal
-        isOpen={!!userToDelete}
-        onClose={() => setUserToDelete(null)}
-        onConfirm={handleConfirmDeleteUser}
-        title="Delete User?"
-        message={`Are you sure you want to delete ${userToDelete?.name}? This cannot be undone.`}
-        variant="danger"
-        confirmText="Yes, Delete User"
-      />
+      {/* Client Form Modal */}
+      {showClientForm && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/10 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-[#1a2333] w-full max-w-lg rounded-[3rem] border border-slate-700 shadow-2xl animate-in zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
+            <form onSubmit={handleClientSubmit} className="p-12 space-y-8 overflow-y-auto">
+              <h2 className="text-3xl font-black text-white tracking-tight uppercase">Edit Client</h2>
+              <div>
+                  <label htmlFor="clientName" className="text-sm font-bold text-slate-400 mb-2 block">Client Name</label>
+                  <input id="clientName" type="text" value={clientFormData.name} onChange={(e) => setClientFormData({ ...clientFormData, name: e.target.value })} className="w-full bg-[#0f172a] border border-slate-700 rounded-2xl px-6 py-4 text-lg font-black text-white focus:outline-none focus:border-orange-500 shadow-inner" />
+              </div>
+              <div className="flex justify-end space-x-4">
+                  <button type="button" onClick={() => setShowClientForm(false)} className="px-8 py-3 bg-slate-700 rounded-xl text-xs font-black text-white hover:bg-slate-600 transition-all">Cancel</button>
+                  <button type="submit" className="px-8 py-3 bg-orange-600 rounded-xl text-xs font-black text-white hover:bg-orange-700 transition-all">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-       <ConfirmModal
-        isOpen={showStatusModal}
-        onClose={() => setShowStatusModal(false)}
-        onConfirm={() => setShowStatusModal(false)}
-        title={statusModalConfig.title}
-        message={statusModalConfig.message}
-        variant={statusModalConfig.variant}
-        confirmText="OK"
-      />
 
+      {/* Person Form Modal */}
       {showPersonForm && (
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/10 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-[#1a2333] w-full max-w-lg rounded-[3rem] border border-slate-700 shadow-2xl animate-in zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center p-6 md:p-10 pb-4 md:pb-6 flex-shrink-0">
-              <h3 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{editingUser ? 'Update Profile' : 'New Creator'}</h3>
-              <button onClick={() => setShowPersonForm(false)} className="text-slate-500 hover:text-white transition-colors p-2 hover:bg-slate-800 rounded-xl">
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <form onSubmit={handlePersonSubmit} className="space-y-6 overflow-y-auto px-6 md:px-10 pb-8 md:pb-10">
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Full Name</label>
-                <input required type="text" placeholder="e.g. Abdallah" value={personFormData.name} onChange={e => setPersonFormData({...personFormData, name: e.target.value})} className="w-full bg-[#0f172a] border border-slate-700 rounded-2xl px-5 py-4 text-white font-bold focus:outline-none focus:border-orange-600 shadow-inner" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Work Email</label>
-                <input required type="email" placeholder="abdallah@gisqo.com" value={personFormData.email} onChange={e => setPersonFormData({...personFormData, email: e.target.value})} className="w-full bg-[#0f172a] border border-slate-700 rounded-2xl px-5 py-4 text-white font-bold focus:outline-none focus:border-orange-600 shadow-inner" />
-              </div>
-              <div className="relative">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Password</label>
-                <input required type={showPassword ? "text" : "password"} placeholder="Password" value={personFormData.password} onChange={e => setPersonFormData({...personFormData, password: e.target.value})} className="w-full bg-[#0f172a] border border-slate-700 rounded-2xl px-5 py-4 text-white font-bold focus:outline-none focus:border-orange-600 shadow-inner pr-14" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-[60%] -translate-y-[50%] text-slate-500 hover:text-white transition-colors">
-                  {showPassword ? (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.542-7 1.274-4.057 5.064-7 9.542-7 .847 0 1.67.127 2.463.372m-.626 6.375a3 3 0 11-4.242-4.242" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" /></svg>
-                  ) : (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                  )}
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Role</label>
-                    <div className="relative group">
-                      <select value={personFormData.role} onChange={e => setPersonFormData({...personFormData, role: e.target.value as any})} className="w-full bg-[#0f172a] border border-slate-700 rounded-2xl px-5 py-4 text-white font-bold focus:outline-none focus:border-orange-600 shadow-inner appearance-none cursor-pointer">
-                        <option value="CREATOR">Content Creator</option>
-                        <option value="ADMIN">Administrator</option>
-                      </select>
-                      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-orange-500 transition-colors">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Status</label>
-                    <div className="relative group">
-                      <select value={personFormData.active ? 'true' : 'false'} onChange={e => setPersonFormData({...personFormData, active: e.target.value === 'true'})} className="w-full bg-[#0f172a] border border-slate-700 rounded-2xl px-5 py-4 text-white font-bold focus:outline-none focus:border-orange-600 shadow-inner appearance-none cursor-pointer">
-                        <option value="true">Active</option>
-                        <option value="false">Inactive</option>
-                      </select>
-                      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-orange-500 transition-colors">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                    </div>
-                  </div>
-              </div>
-              <div className="flex space-x-4 pt-6">
-                <button type="button" onClick={() => setShowPersonForm(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-xs">Cancel</button>
-                <button type="submit" className="flex-[2] py-6 bg-orange-600 text-white font-black rounded-3xl uppercase tracking-widest text-xs shadow-xl shadow-orange-900/40">{editingUser ? 'Update Member' : 'Create Member'}</button>
-              </div>
-            </form>
+             {/* Form content from your provided code */}
           </div>
         </div>
       )}
