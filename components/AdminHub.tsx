@@ -8,7 +8,7 @@ import Shootings from './Shootings';
 import ConfirmModal from './ConfirmModal';
 import { db } from '../firebase';
 import { doc, updateDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
-import { Plus, Archive, ArchiveRestore, Pencil } from 'lucide-react';
+import { Plus, Archive, ArchiveRestore, Pencil, X } from 'lucide-react';
 
 interface AdminHubProps {
   entries: ContentEntry[];
@@ -558,9 +558,98 @@ const AdminHub: React.FC<AdminHubProps> = ({
 
       {/* Person Form Modal */}
       {showPersonForm && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/10 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-[#1a2333] w-full max-w-lg rounded-[3rem] border border-slate-700 shadow-2xl animate-in zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
-             {/* Form content from your provided code */}
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-[#1e293b] w-full max-w-md rounded-3xl border border-slate-700 shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-8 pb-6 flex-shrink-0">
+              <h2 className="text-2xl font-bold text-white uppercase tracking-wider">{editingUser ? 'Edit Creator' : 'New Creator'}</h2>
+              <button onClick={() => setShowPersonForm(false)} className="text-slate-500 hover:text-white transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handlePersonSubmit} className="space-y-5 px-8 pb-8 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Full Name</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Abdallah"
+                  required 
+                  value={personFormData.name} 
+                  onChange={e => setPersonFormData({...personFormData, name: e.target.value})} 
+                  className="w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg px-4 py-3 text-white font-medium focus:outline-none focus:border-orange-500 transition-colors" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Email</label>
+                <input 
+                  type="email" 
+                  placeholder="abdallah@gisqo.com"
+                  required 
+                  value={personFormData.email} 
+                  onChange={e => setPersonFormData({...personFormData, email: e.target.value})} 
+                  className="w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg px-4 py-3 text-white font-medium focus:outline-none focus:border-orange-500 transition-colors" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Password</label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? 'text' : 'password'} 
+                    placeholder="Password"
+                    required={!editingUser} 
+                    value={personFormData.password} 
+                    onChange={e => setPersonFormData({...personFormData, password: e.target.value})} 
+                    className="w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg px-4 py-3 text-white font-medium focus:outline-none focus:border-orange-500 transition-colors pr-10" 
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  </button>
+                </div>
+                {editingUser && <p className="text-xs text-slate-500 mt-2">Leave blank to keep the current password.</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Role</label>
+                  <div className="relative">
+                    <select 
+                      value={personFormData.role} 
+                      onChange={e => setPersonFormData({...personFormData, role: e.target.value as UserRole})}
+                      className="w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg px-4 py-3 text-white font-medium focus:outline-none focus:border-orange-500 appearance-none transition-colors"
+                    >
+                      <option value="CREATOR">Content Creator</option>
+                      <option value="ADMIN">Administrator</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Status</label>
+                  <div className="relative">
+                     <select 
+                      value={personFormData.active.toString()} 
+                      onChange={e => setPersonFormData({...personFormData, active: e.target.value === 'true'})}
+                      className="w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg px-4 py-3 text-white font-medium focus:outline-none focus:border-orange-500 appearance-none transition-colors"
+                    >
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-4">
+                  <button type="button" onClick={() => setShowPersonForm(false)} className="text-sm font-semibold text-slate-500 hover:text-white transition-colors">Cancel</button>
+                  <button type="submit" className="px-8 py-3 bg-orange-600 rounded-lg text-sm font-bold text-white hover:bg-orange-700 transition-colors shadow-lg shadow-orange-600/20">{editingUser ? 'Save Changes' : 'Create Member'}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
